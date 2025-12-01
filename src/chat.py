@@ -4,7 +4,7 @@ from textual.binding import Binding
 from textual.containers import ScrollableContainer, VerticalScroll, Horizontal, HorizontalScroll, Vertical
 from textual.widgets import Input, Markdown, Static, Collapsible, Footer, LoadingIndicator, ListView, ListItem, Label, Header
 from textual.screen import Screen
-from data import BaseContainerItem, BaseMessage, BaseDataProvider, FakeDataProvider
+from data import BaseContainerItem, BaseMessage, BaseDataProvider, FakeDataProvider, DataUpdate, ChannelMessage, UserMessage
 
 # class Content(VerticalScroll, can_focus=False):
 #     """Non focusable vertical scroll."""
@@ -28,6 +28,7 @@ class BaseChatScreen(Screen):
     channel_items: list[ChannelListViewItem]
     left_pane_title = "bad_screen_type"
     message_items = list[MessageListViewItem]()
+    selected_container: BaseContainerItem
 
     CSS_PATH = "chat.tcss"
 
@@ -40,7 +41,7 @@ class BaseChatScreen(Screen):
         with Horizontal():
             with Vertical(id="LeftPane"):
                 yield Label(self.left_pane_title, classes="PaneTitle", id="LeftPaneTitle")
-                yield ListView(*self.channel_items)
+                yield ListView(*self.channel_items,id="LeftPaneListView")
             with Vertical(id="RightPane"):
                 yield Label("Loading", classes="PaneTitle", id="RightPaneTitle")
                 yield ListView(*self.message_items, id="MessageList")
@@ -76,6 +77,7 @@ class BaseChatScreen(Screen):
         """Selects a new channel and updates the UI"""
         self.log(f"You selected: {name}")
         channel = self.get_data_container_by_name(name)
+        self.selected_container = channel
 
         # Update the title box
         label = self.query_one("#RightPaneTitle")
@@ -84,6 +86,7 @@ class BaseChatScreen(Screen):
             self.log(f"Set title to '{channel.display_text}'")
         else:
             self.log("No label object found in select_channel")
+        
 
         self.set_loader_visible(True)
         self.message_items.clear()
@@ -92,6 +95,10 @@ class BaseChatScreen(Screen):
     @property
     def message_listview(self) -> ListView:
         return self.query_one("#MessageList")
+    
+    @property
+    def container_listview(self) -> ListView:
+        return self.query_one("#LeftPaneListView")
     
     def set_loader_visible(self, visibile: bool) -> None:
         loader = self.query_one("#LoadingIndicator")
@@ -114,6 +121,17 @@ class BaseChatScreen(Screen):
         self.send_message(event.value)
         event.input.clear()
 
+    def on_data_update(self, event:DataUpdate):
+        if event.container == self.selected_container:
+            if event.update_type == "add":
+                if event.item is None:
+                    # New channel was added
+                    new_channel = ChannelListViewItem(event.container)
+                    self.container_listview.append(new_channel)
+                else:
+                    new_item = MessageListViewItem(event.item)
+                    self.message_listview.append(new_item)
+
 
 class ChannelChatScreen(BaseChatScreen):
     left_pane_title = "Channels"
@@ -121,10 +139,13 @@ class ChannelChatScreen(BaseChatScreen):
         Binding("a", "add_channel", "Add channel"),
         Binding("del", "delete_channel", "Remove channel")
     ]
-    data_provider = FakeDataProvider()
+    
+    def __init__(self):
+        super().__init__()
+        self.data_provider = FakeDataProvider(self.on_data_update)
 
     def send_message(self, text):
-        pass
+        self.data_provider.send_message(ChannelMessage(self.selected_container, text, None, self.data_provider.current_user))
     def get_data_containers(self):
         return self.data_provider.get_channels()
     def get_data_container_items(self, container):
@@ -139,10 +160,16 @@ class UserChatScreen(BaseChatScreen):
         Binding("n", "add_chat", "New chat"),
         Binding("del", "delete_chat", "Delete chat")
     ]
-    data_provider = FakeDataProvider()
+
+    def __init__(self):
+        super().__init__()
+        self.data_provider = FakeDataProvider(self.on_data_update)
 
     def send_message(self, text):
-        pass
+        sender = self.data_provider.current_user
+        receiver = self.selected_container
+        self.log(f"Sending message {text} from {sender} to {receiver}")
+        self.data_provider.send_message(UserMessage(text, None, sender, receiver))
     def get_data_containers(self):
         return self.data_provider.get_users()
     def get_data_container_items(self, container):

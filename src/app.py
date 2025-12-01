@@ -14,7 +14,6 @@ class MeshCoreTuiApp(App):
     """Main entry point for MeshCore TUI App"""  
     CSS_PATH = "app.tcss"
     TITLE = "MeshCore Companion Terminal Interface"
-    data_provider:BaseDataProvider = FakeDataProvider()
 
     MODES = {
         "settings": SettingsScreen,
