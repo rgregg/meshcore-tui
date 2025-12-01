@@ -1,0 +1,12 @@
+PromptDialog {
+    width: 50;
+    height: 15;
+}
+
+.accept {
+    background: red;
+}
+
+.decline {
+    background: green;
+}

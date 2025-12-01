@@ -114,6 +114,10 @@ class BaseDataProvider(ABC):
     def send_message(self, message:BaseMessage) -> bool:
         """Sends a message to a channel or node based on the message type and parameters.
            Returns a value to indiciate if the message was sent or not."""
+        
+    @abstractmethod
+    def remove_container(self, container:BaseContainerItem):
+        pass
 
 class FakeDataProvider(BaseDataProvider):
     __messages: dict[BaseContainerItem, list[BaseMessage]] = {}
@@ -174,7 +178,7 @@ class FakeDataProvider(BaseDataProvider):
                 messages = []
                 self.__messages[channel] = messages
             messages.append(message)
-            self._on_update(DataUpdate("add", channel, message)) 
+            self._on_update(DataUpdate("add", channel, message))
         elif isinstance(message, UserMessage):
             user = message.receiver
             messages = self.__messages.get(user)
@@ -183,6 +187,13 @@ class FakeDataProvider(BaseDataProvider):
                 self.__messages[user] = messages
             messages.append(message)
             self._on_update(DataUpdate("add", user, message))
+    
+    def remove_container(self, container):
+        if isinstance(container, MeshCoreChannel):
+            self.__channels.remove(container)
+        elif isinstance(container, MeshCoreNode):
+            self.__users.remove(container)
+        self._on_update(DataUpdate("remove", container, None))
 
 class DataUpdate:
     update_type: str # add, update, remove

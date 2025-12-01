@@ -5,6 +5,7 @@ from textual.containers import ScrollableContainer, VerticalScroll, Horizontal, 
 from textual.widgets import Input, Markdown, Static, Collapsible, Footer, LoadingIndicator, ListView, ListItem, Label, Header
 from textual.screen import Screen
 from data import BaseContainerItem, BaseMessage, BaseDataProvider, FakeDataProvider, DataUpdate, ChannelMessage, UserMessage
+from dialog import PromptDialog
 
 # class Content(VerticalScroll, can_focus=False):
 #     """Non focusable vertical scroll."""
@@ -137,7 +138,7 @@ class ChannelChatScreen(BaseChatScreen):
     left_pane_title = "Channels"
     BINDINGS = [
         Binding("a", "add_channel", "Add channel"),
-        Binding("del", "delete_channel", "Remove channel")
+        Binding("d", "delete_channel", "Remove channel")
     ]
     
     def __init__(self):
@@ -152,13 +153,21 @@ class ChannelChatScreen(BaseChatScreen):
         return self.data_provider.get_messages_for_channel(container)
     def get_data_container_by_name(self, name):
         return self.data_provider.get_channel_by_name(name)
+    
+    def action_delete_channel(self):
+        screen = PromptDialog(f"Are you sure you want to remove channel {self.selected_container.name}?")
+        def callback(result):
+            if result:
+                # Remove the current channel
+                self.data_provider.remove_container(self.selected_container)
+        self.app.push_screen(screen, callback)
         
 
 class UserChatScreen(BaseChatScreen):
     left_pane_title = "Chats"
     BINDINGS = [
-        Binding("n", "add_chat", "New chat"),
-        Binding("del", "delete_chat", "Delete chat")
+        Binding("a", "add_chat", "New chat"),
+        Binding("d", "delete_chat", "Delete chat")
     ]
 
     def __init__(self):
@@ -176,4 +185,11 @@ class UserChatScreen(BaseChatScreen):
         return self.data_provider.get_messages_for_user(container)
     def get_data_container_by_name(self, name):
         return self.data_provider.get_user_by_name(name)
-
+    
+    def action_delete_chat(self):
+        screen = PromptDialog(f"Are you sure you want to remove chat with {self.selected_container.name}?")
+        def callback(result):
+            if result:
+                # Remove the current channel
+                self.data_provider.remove_container(self.selected_container)
+        self.app.push_screen(screen, callback)
