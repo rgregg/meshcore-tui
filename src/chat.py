@@ -1,80 +1,152 @@
+from abc import ABC, abstractmethod
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import ScrollableContainer, VerticalScroll, Horizontal, HorizontalScroll, Vertical
-from textual.widgets import Input, Markdown, Static, Collapsible, Footer, LoadingIndicator, ListView, ListItem, Label
+from textual.widgets import Input, Markdown, Static, Collapsible, Footer, LoadingIndicator, ListView, ListItem, Label, Header
 from textual.screen import Screen
+from data import BaseContainerItem, BaseMessage, BaseDataProvider, FakeDataProvider
 
-class Content(VerticalScroll, can_focus=False):
-    """Non focusable vertical scroll."""
+# class Content(VerticalScroll, can_focus=False):
+#     """Non focusable vertical scroll."""
 
-class ChatScreen(Screen):
-    DEFAULT_CSS = """
-    PageScreen {
-        width: 100%;
-        height: 1fr;
-        overflow-y: auto;        
-    }
-    #ChannelsTitle {
-        text-align: center;
-        border-bottom: panel white;
-    }
-    #ChannelList {
-        width: 25%;
-        overflow-y: auto;
-        border-right: panel white;
-    }
-    #MessageList {
-        width: 75%;
-        overflow-y: auto;
-    }
-    """
 
-    BINDINGS = [
-        Binding("a", "add_channel", "Add ahannel"),
-        Binding("d", "delete_channel", "Remove ahannel")
-    ]
+class ChannelListViewItem(ListItem):
+    item: BaseContainerItem
+    def __init__(self, item: BaseContainerItem):
+        self.log(f"ChannelListViewItem received: {item}")
+        super().__init__(Label(item.display_text))
+        self.item = item
+
+class MessageListViewItem(ListItem):
+    message: BaseMessage
+    def __init__(self, message: BaseMessage):
+        super().__init__(Label(f"{message.sender}: {message.text}"))
+        self.message = message
+
+class BaseChatScreen(Screen):
+    """Implements a Screen with a split view"""
+    channel_items: list[ChannelListViewItem]
+    left_pane_title = "bad_screen_type"
+    message_items = list[MessageListViewItem]()
+
+    CSS_PATH = "chat.tcss"
 
     def __init__(self) -> None:
         super().__init__()
 
     def compose(self) -> ComposeResult:
-        channels = [
-            ListItem(Label("Public")),
-            ListItem(Label("#bot")),
-            ListItem(Label("#edm"))
-        ]
-
+        self.channel_items = [ChannelListViewItem(c) for c in self.get_data_containers()]
+        #yield Header()
         with Horizontal():
-            with Vertical(id="ChannelList"):
-                yield Label("Channels", id="ChannelTitle")
-                yield ListView(*channels)
-            with VerticalScroll(id="MessageList"):
-                yield Label("Loading latest messages...", id="ChannelName")
+            with Vertical(id="LeftPane"):
+                yield Label(self.left_pane_title, classes="PaneTitle", id="LeftPaneTitle")
+                yield ListView(*self.channel_items)
+            with Vertical(id="RightPane"):
+                yield Label("Loading", classes="PaneTitle", id="RightPaneTitle")
+                yield ListView(*self.message_items, id="MessageList")
+                yield Input(id="InputTextBox", classes="ChatTextBox", placeholder="Send a message", max_length=160)
                 yield LoadingIndicator(id="LoadingIndicator")
         yield Footer()
 
+    @abstractmethod
+    def get_data_containers(self) -> list[BaseContainerItem]:
+        pass
+    
+    @abstractmethod
+    def get_data_container_by_name(self, name:str) -> BaseContainerItem:
+        pass
+
+    @abstractmethod
+    def get_data_container_items(self, container: BaseContainerItem) -> list[BaseMessage]:
+        pass
+
+    @abstractmethod
+    def send_message(self, text:str) -> None:
+        pass
+
     async def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
-        item = event.item
-        channel = item.query_one(Label).content
-        self.log(f"Select_channel: {channel}")
-        await self.run_action("select_channel('" + channel + "')")
+        list_item = event.item
+        if not hasattr(list_item, 'item'):
+            return
+        channel = list_item.item
+        self.log(f"Select LeftPane: {channel.name}")
+        await self.run_action("select_channel('" + channel.name + "')")
 
-    async def action_add_channel(self) -> None:
-        self.log(f"Add channel action invoked")
-
-    async def action_delete_channel(self) -> None:
-        list_view = self.query_one(ListView)
-        item = list_view.highlighted_child
-        if item:
-            channel = item.children[0].content
-            self.log(f"Remove channel '{channel}' action invoked")
-
-    def action_select_channel(self, channel_name: str) -> None:
+    async def action_select_channel(self, name: str) -> None:
         """Selects a new channel and updates the UI"""
-        self.log(f"You selected: {channel_name}")
-        label = self.query_one("#ChannelName")
+        self.log(f"You selected: {name}")
+        channel = self.get_data_container_by_name(name)
+
+        # Update the title box
+        label = self.query_one("#RightPaneTitle")
         if label:
-            label.content = "Channel " + channel_name
+            label.content = channel.display_text
+            self.log(f"Set title to '{channel.display_text}'")
+        else:
+            self.log("No label object found in select_channel")
+
+        self.set_loader_visible(True)
+        self.message_items.clear()
+        await self.run_action(f"reload_channel_data('{name}')")
+
+    @property
+    def message_listview(self) -> ListView:
+        return self.query_one("#MessageList")
+    
+    def set_loader_visible(self, visibile: bool) -> None:
         loader = self.query_one("#LoadingIndicator")
         if loader:
-            loader.visible = False
+            loader.visible = visibile
+
+    async def action_reload_channel_data(self, name: str) -> None:
+        """Updates the list view for the messages with the latest content"""
+        self.log(f"Reloading messages for {name}")
+
+        listview = self.message_listview
+        listview.clear()
+        channel = self.get_data_container_by_name(name)
+        items = [MessageListViewItem(m) for m in self.get_data_container_items(channel)]
+        listview.extend(items)
+        self.set_loader_visible(False)
+
+    async def on_input_submitted(self, event:Input.Submitted):
+        self.log(f"Input received: {event.value}")
+        self.send_message(event.value)
+        event.input.clear()
+
+
+class ChannelChatScreen(BaseChatScreen):
+    left_pane_title = "Channels"
+    BINDINGS = [
+        Binding("a", "add_channel", "Add channel"),
+        Binding("del", "delete_channel", "Remove channel")
+    ]
+    data_provider = FakeDataProvider()
+
+    def send_message(self, text):
+        pass
+    def get_data_containers(self):
+        return self.data_provider.get_channels()
+    def get_data_container_items(self, container):
+        return self.data_provider.get_messages_for_channel(container)
+    def get_data_container_by_name(self, name):
+        return self.data_provider.get_channel_by_name(name)
+        
+
+class UserChatScreen(BaseChatScreen):
+    left_pane_title = "Chats"
+    BINDINGS = [
+        Binding("n", "add_chat", "New chat"),
+        Binding("del", "delete_chat", "Delete chat")
+    ]
+    data_provider = FakeDataProvider()
+
+    def send_message(self, text):
+        pass
+    def get_data_containers(self):
+        return self.data_provider.get_users()
+    def get_data_container_items(self, container):
+        return self.data_provider.get_messages_for_user(container)
+    def get_data_container_by_name(self, name):
+        return self.data_provider.get_user_by_name(name)
+

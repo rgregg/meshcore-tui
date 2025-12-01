@@ -1,0 +1,29 @@
+ PageScreen {
+        width: 100%;
+        height: 1fr;
+        overflow-y: auto;        
+    }
+    #LeftPane {
+        width: 25%;
+        overflow-y: auto;
+        border-right: panel white;
+    }
+
+    .PaneTitle {
+        text-align: center;
+        border-bottom: panel white;
+        height: 2;
+        width: 100%;
+    }
+
+    #RightPane {
+        width: 75%;
+    }
+
+    #LoadingIndicator {
+        height: 1;
+    }
+
+    #MessageList {
+
+    }

@@ -7,7 +7,7 @@ from textual.screen import Screen
 class Content(VerticalScroll, can_focus=False):
     """Non focusable vertical scroll."""
 
-class HomeScreen(Screen):
+class SettingsScreen(Screen):
     DEFAULT_CSS = """
     PageScreen {
         width: 100%;
