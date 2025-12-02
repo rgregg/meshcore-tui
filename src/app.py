@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from textual import getters, work
 from textual.app import App
+from textual.command import CommandPalette
 from textual.binding import Binding
 # from textual.containers import ScrollableContainer, VerticalScroll, Horizontal, HorizontalScroll
 # from textual.widgets import Input, Markdown, Static, Collapsible
@@ -41,8 +42,8 @@ class MeshCoreTuiApp(App):
             "Settings",
             tooltip="Configure the app settings"
         ),
-
     ]
+
 
 
 if __name__ == "__main__":
