@@ -4,7 +4,16 @@ from textual.binding import Binding
 from textual.containers import ScrollableContainer, VerticalScroll, Horizontal, HorizontalScroll, Vertical
 from textual.widgets import Input, Markdown, Static, Collapsible, Footer, LoadingIndicator, ListView, ListItem, Label, Header
 from textual.screen import Screen
-from data import BaseContainerItem, BaseMessage, BaseDataProvider, FakeDataProvider, DataUpdate, ChannelMessage, UserMessage
+from data import (
+    BaseContainerItem,
+    BaseMessage,
+    BaseDataProvider,
+    FakeDataProvider,
+    DataUpdate,
+    ChannelMessage,
+    UserMessage,
+    MeshCoreChatProvider,
+)
 from dialog import PromptDialog
 
 # class Content(VerticalScroll, can_focus=False):
@@ -30,6 +39,7 @@ class BaseChatScreen(Screen):
     left_pane_title = "bad_screen_type"
     message_items = list[MessageListViewItem]()
     selected_container: BaseContainerItem
+    _data_provider: BaseDataProvider | None = None
 
     CSS_PATH = "chat.tcss"
 
@@ -100,6 +110,15 @@ class BaseChatScreen(Screen):
     @property
     def container_listview(self) -> ListView:
         return self.query_one("#LeftPaneListView")
+
+    @property
+    def data_provider(self) -> BaseDataProvider:
+        if self._data_provider is None:
+            self._data_provider = self.create_data_provider()
+        return self._data_provider
+
+    def create_data_provider(self) -> BaseDataProvider:
+        return FakeDataProvider(self.on_data_update)
     
     def set_loader_visible(self, visibile: bool) -> None:
         loader = self.query_one("#LoadingIndicator")
@@ -143,7 +162,6 @@ class ChannelChatScreen(BaseChatScreen):
     
     def __init__(self):
         super().__init__()
-        self.data_provider = FakeDataProvider(self.on_data_update)
 
     def send_message(self, text):
         self.data_provider.send_message(ChannelMessage(self.selected_container, text, None, self.data_provider.current_user))
@@ -153,14 +171,23 @@ class ChannelChatScreen(BaseChatScreen):
         return self.data_provider.get_messages_for_channel(container)
     def get_data_container_by_name(self, name):
         return self.data_provider.get_channel_by_name(name)
-    
+
     def action_delete_channel(self):
+        if isinstance(self.data_provider, MeshCoreChatProvider):
+            self.log("Channel removal not supported for live MeshCore data")
+            return
         screen = PromptDialog(f"Are you sure you want to remove channel {self.selected_container.name}?")
         def callback(result):
             if result:
                 # Remove the current channel
                 self.data_provider.remove_container(self.selected_container)
         self.app.push_screen(screen, callback)
+
+    def create_data_provider(self) -> BaseDataProvider:
+        service = getattr(self.app, "mesh_service", None)
+        if service:
+            return MeshCoreChatProvider(self.on_data_update, service, "channels")
+        return super().create_data_provider()
         
 
 class UserChatScreen(BaseChatScreen):
@@ -169,10 +196,6 @@ class UserChatScreen(BaseChatScreen):
         Binding("a", "add_chat", "New chat"),
         Binding("d", "delete_chat", "Delete chat")
     ]
-
-    def __init__(self):
-        super().__init__()
-        self.data_provider = FakeDataProvider(self.on_data_update)
 
     def send_message(self, text):
         sender = self.data_provider.current_user
@@ -187,9 +210,18 @@ class UserChatScreen(BaseChatScreen):
         return self.data_provider.get_user_by_name(name)
     
     def action_delete_chat(self):
+        if isinstance(self.data_provider, MeshCoreChatProvider):
+            self.log("Chat removal not supported for live MeshCore data")
+            return
         screen = PromptDialog(f"Are you sure you want to remove chat with {self.selected_container.name}?")
         def callback(result):
             if result:
                 # Remove the current channel
                 self.data_provider.remove_container(self.selected_container)
         self.app.push_screen(screen, callback)
+
+    def create_data_provider(self) -> BaseDataProvider:
+        service = getattr(self.app, "mesh_service", None)
+        if service:
+            return MeshCoreChatProvider(self.on_data_update, service, "users")
+        return super().create_data_provider()
