@@ -225,6 +225,7 @@ class MeshCoreService:
                 display_name=display_name,
                 raw=payload,
             )
+            logger.info("Synced contact %s (%s)", display_name, public_key)
         self._contacts.update(contacts)
         await self._notify(self._contact_listeners, list(self._contacts.values()))
 
@@ -238,6 +239,7 @@ class MeshCoreService:
             display_name=payload.get("adv_name") or public_key[:8],
             raw=payload,
         )
+        logger.info("Discovered new contact %s (%s)", info.display_name, public_key)
         self._contacts[public_key] = info
         await self._notify(self._contact_listeners, list(self._contacts.values()))
 
