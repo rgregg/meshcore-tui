@@ -14,7 +14,7 @@
 - [ ] Public channel readiness
   - [x] Indicate MeshCore connection status in the footer so it’s obvious when the radio is reachable
   - [x] Auto-select and focus the first available channel (default `public`) when live data arrives so messages can be sent without extra clicks
-  - [ ] Show sender metadata for channel posts (map contact prefix to display name) instead of attributing everything to the current user
+  - [x] Show sender metadata for channel posts (map contact prefix to display name) instead of attributing everything to the current user
   - [ ] Provide an error toast when sending to a channel fails (e.g., channel not provisioned or radio offline)
 - [ ] Refactor classes into files in a more idomatic way
 - [ ] Package as a python module and enable easy installation via pipx

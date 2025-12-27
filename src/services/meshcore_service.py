@@ -186,8 +186,12 @@ class MeshCoreService:
     async def _handle_channel_message(self, event: Event) -> None:
         idx = event.payload.get("channel_idx")
         channel = self._channels.get(idx)
+        prefix = event.payload.get("pubkey_prefix", "")
+        contact = self._find_contact_by_prefix(prefix)
         data = {
             "channel": channel,
+            "contact": contact,
+            "sender_prefix": prefix,
             "text": event.payload.get("text", ""),
             "timestamp": event.payload.get("sender_timestamp"),
         }

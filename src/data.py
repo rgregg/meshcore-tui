@@ -305,6 +305,14 @@ class MeshCoreChatProvider(BaseDataProvider):
             self._channel_map[channel.index] = container
             self.__messages.setdefault(container, [])
             self._on_update(DataUpdate("add", container, None))
+        contact = payload.get("contact")
+        prefix = payload.get("sender_prefix")
+        if isinstance(contact, MeshCoreContactInfo):
+            sender = MeshCoreNode(contact.display_name, public_key=contact.public_key)
+        elif isinstance(prefix, str) and prefix:
+            sender = MeshCoreNode(prefix, public_key=prefix)
+        else:
+            sender = MeshCoreNode("Unknown sender")
         message = ChannelMessage(
             container,
             text,
@@ -312,7 +320,7 @@ class MeshCoreChatProvider(BaseDataProvider):
                 payload.get("timestamp", datetime.now(timezone.utc).timestamp()),
                 tz=timezone.utc,
             ),
-            self.current_user,
+            sender,
         )
         self.__messages.setdefault(container, []).append(message)
         self._on_update(DataUpdate("add", container, message))
