@@ -88,10 +88,8 @@ class MeshCoreService:
             self._meshcore.auto_update_contacts = True
             self._wire_event_handlers(self._meshcore)
             await self._meshcore.commands.send_appstart()
-            self._set_status("Loading contacts…", state="loading_contacts")
-            await self._meshcore.ensure_contacts()
+            await self.refresh_contacts(set_idle_status=False)
             await self._meshcore.commands.send_device_query()
-            self._set_status("Refreshing channels…", state="refreshing_channels")
             await self.refresh_channels(set_idle_status=False)
             await self._drain_pending_messages()
             await self._meshcore.start_auto_message_fetching()
@@ -132,6 +130,24 @@ class MeshCoreService:
 
     def add_channel_message_listener(self, listener: Listener) -> None:
         self._channel_message_listeners.append(listener)
+
+    async def refresh_contacts(self, *, set_idle_status: bool = True) -> None:
+        meshcore = self._meshcore
+        if not meshcore or not meshcore.is_connected:
+            logger.warning("Skipping contact refresh; MeshCore not connected")
+            return
+        self._set_status("Refreshing contacts…", state="refreshing_contacts")
+        try:
+            await meshcore.ensure_contacts()
+            logger.info("Contact refresh completed")
+        except Exception as exc:  # pragma: no cover - hardware specific
+            logger.warning("Contact refresh failed: %s", exc)
+        finally:
+            if set_idle_status:
+                self._set_status(
+                    "Connected" if self.is_connected else "Disconnected",
+                    state="connected" if self.is_connected else "disconnected",
+                )
 
     async def refresh_channels(self, *, set_idle_status: bool = True) -> Sequence[MeshCoreChannelInfo]:
         meshcore = self._meshcore
@@ -297,10 +313,15 @@ class MeshCoreService:
         interval = max(5, self.config.companion.channel_refresh_seconds)
         while self._running:
             try:
+                await self.refresh_contacts(set_idle_status=False)
                 await self.refresh_channels()
             except Exception as exc:  # pragma: no cover
                 logger.warning("Failed to refresh channels: %s", exc)
             await asyncio.sleep(interval)
+
+    async def refresh_contacts_and_channels(self) -> None:
+        await self.refresh_contacts(set_idle_status=False)
+        await self.refresh_channels()
 
     async def _notify(self, listeners: Sequence[Listener], payload: Any) -> None:
         for listener in list(listeners):

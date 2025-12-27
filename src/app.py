@@ -137,8 +137,8 @@ class MeshCoreTuiApp(App):
             self.notify("MeshCore service unavailable.", severity="error")
             return
         try:
-            await service.refresh_channels()
-            self.notify("Channel list refreshed.", title="MeshCore", severity="information")
+            await service.refresh_contacts_and_channels()
+            self.notify("Contacts and channels refreshed.", title="MeshCore", severity="information")
         except Exception as exc:  # pragma: no cover - requires live device
             self.notify(f"Channel refresh failed: {exc}", severity="error")
 
