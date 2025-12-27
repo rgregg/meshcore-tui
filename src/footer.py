@@ -17,6 +17,7 @@ class ConnectionStatusFooter(Footer):
         super().__init__(**kwargs)
         self._status_id = status_id
         self._status_widget: Static | None = None
+        self._last_status_text: str | None = None
 
     def compose(self) -> ComposeResult:  # type: ignore[override]
         yield Static("MeshCore: starting...", id=self._status_id)
