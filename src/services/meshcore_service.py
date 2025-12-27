@@ -36,6 +36,14 @@ class MeshCoreContactInfo:
     raw: dict[str, Any]
 
 
+@dataclass
+class MeshCoreStatus:
+    message: str
+    current: int = 0
+    total: int = 0
+    state: str = "idle"
+
+
 class MeshCoreService:
     """Manages a MeshCore session and exposes high-level hooks."""
 
@@ -51,6 +59,7 @@ class MeshCoreService:
         self._ready = asyncio.Event()
         self._running = False
         self._channel_refresh_task: asyncio.Task[None] | None = None
+        self._status = MeshCoreStatus(message="Disconnected", state="disconnected")
 
     @property
     def config(self) -> MeshcoreConfig:
@@ -60,28 +69,38 @@ class MeshCoreService:
     def is_connected(self) -> bool:
         return bool(self._meshcore and self._meshcore.is_connected)
 
+    @property
+    def status(self) -> MeshCoreStatus:
+        return self._status
+
     async def start(self) -> None:
         if self._running:
             return
         transport = self.config.companion.transport.lower()
         if transport == "fake":
             logger.info("MeshCore transport set to fake; skipping connection.")
+            self._set_status("Fake data mode", state="fake")
             return
+        self._set_status("Connecting to MeshCore…", state="connecting")
         try:
             logger.info("Connecting to MeshCore via %s", transport)
             self._meshcore = await self._build_connection()
             self._meshcore.auto_update_contacts = True
             self._wire_event_handlers(self._meshcore)
             await self._meshcore.commands.send_appstart()
+            self._set_status("Loading contacts…", state="loading_contacts")
             await self._meshcore.ensure_contacts()
             await self._meshcore.commands.send_device_query()
-            await self.refresh_channels()
+            self._set_status("Refreshing channels…", state="refreshing_channels")
+            await self.refresh_channels(set_idle_status=False)
             await self._drain_pending_messages()
             await self._meshcore.start_auto_message_fetching()
             self._running = True
             self._ready.set()
             self._channel_refresh_task = asyncio.create_task(self._channel_refresh_loop())
+            self._set_status("Connected", state="connected")
         except Exception as exc:  # pragma: no cover
+            self._set_status(f"Connection failed: {exc}", state="error")
             logger.exception("Failed to initialize MeshCore", exc_info=exc)
             raise
 
@@ -96,6 +115,7 @@ class MeshCoreService:
             self._channel_refresh_task = None
         await self._meshcore.stop_auto_message_fetching()
         await self._meshcore.connection_manager.disconnect()
+        self._set_status("Disconnected", state="disconnected")
 
     def add_contact_listener(self, listener: Listener) -> None:
         self._contact_listeners.append(listener)
@@ -113,17 +133,25 @@ class MeshCoreService:
     def add_channel_message_listener(self, listener: Listener) -> None:
         self._channel_message_listeners.append(listener)
 
-    async def refresh_channels(self) -> Sequence[MeshCoreChannelInfo]:
+    async def refresh_channels(self, *, set_idle_status: bool = True) -> Sequence[MeshCoreChannelInfo]:
         meshcore = self._meshcore
         if not meshcore or not meshcore.is_connected:
             logger.warning("Skipping channel refresh; MeshCore not connected")
             return []
+        self._set_status("Refreshing channels…", 0, 0, state="refreshing_channels")
         try:
             info_event = await meshcore.commands.send_device_query()
         except Exception as exc:  # pragma: no cover - hardware specific
             logger.warning("MeshCore device query failed: %s", exc)
+            if set_idle_status:
+                self._set_status(
+                    "Connected" if self.is_connected else "Disconnected",
+                    state="connected" if self.is_connected else "disconnected",
+                )
             return list(self._channels.values())
         max_channels = info_event.payload.get("max_channels", 0)
+        if max_channels:
+            self._set_status("Refreshing channels…", 0, max_channels, state="refreshing_channels")
         channels: Dict[int, MeshCoreChannelInfo] = {}
         for idx in range(max_channels):
             try:
@@ -132,6 +160,12 @@ class MeshCoreService:
                 logger.warning("Failed to fetch channel %s: %s", idx, exc)
                 break
             if event.type != EventType.CHANNEL_INFO:
+                self._set_status(
+                    "Refreshing channels…",
+                    min(idx + 1, max_channels),
+                    max_channels,
+                    state="refreshing_channels",
+                )
                 continue
             channel_name = event.payload.get("channel_name", f"Channel {idx}")
             channels[idx] = MeshCoreChannelInfo(
@@ -139,9 +173,20 @@ class MeshCoreService:
                 name=channel_name,
                 secret=event.payload.get("channel_secret"),
             )
+            self._set_status(
+                "Refreshing channels…",
+                min(idx + 1, max_channels),
+                max_channels,
+                state="refreshing_channels",
+            )
         if channels:
             self._channels = channels
             await self._notify(self._channel_listeners, list(self._channels.values()))
+        if set_idle_status:
+            if self.is_connected:
+                self._set_status("Connected", state="connected")
+            else:
+                self._set_status("Disconnected", state="disconnected")
         return list(channels.values())
 
     async def send_direct_message(self, public_key: str, text: str) -> None:
@@ -247,6 +292,7 @@ class MeshCoreService:
         if not meshcore:
             return
         drained = 0
+        self._set_status("Syncing messages…", drained, limit, state="syncing")
         while drained < limit:
             try:
                 event = await meshcore.commands.get_msg(timeout=2.0)
@@ -256,6 +302,7 @@ class MeshCoreService:
             if event.type in (EventType.NO_MORE_MSGS, EventType.ERROR):
                 break
             drained += 1
+            self._set_status("Syncing messages…", drained, limit, state="syncing")
             await asyncio.sleep(0)  # yield to the UI loop
         if drained == limit:
             logger.warning("Drained %s pending messages; stopping to avoid loops", limit)
@@ -329,5 +376,17 @@ class MeshCoreService:
             return False
         return all(len(part) in (2, 4) and all(ch in "0123456789ABCDEFabcdef" for ch in part) for part in parts)
 
+    def _set_status(self, message: str, current: int = 0, total: int = 0, state: str | None = None) -> None:
+        if total < 0:
+            total = 0
+        if total and current > total:
+            current = total
+        self._status = MeshCoreStatus(
+            message=message,
+            current=current,
+            total=total,
+            state=state or self._status.state,
+        )
 
-__all__ = ["MeshCoreService", "MeshCoreChannelInfo", "MeshCoreContactInfo"]
+
+__all__ = ["MeshCoreService", "MeshCoreChannelInfo", "MeshCoreContactInfo", "MeshCoreStatus"]

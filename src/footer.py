@@ -28,12 +28,18 @@ class ConnectionStatusFooter(Footer):
         if widget is None:
             return
         service = getattr(self.app, "mesh_service", None)
-        if service and service.is_connected:
-            text = "MeshCore: connected"
-            classes = {"-connected"}
-        elif service:
-            text = "MeshCore: connecting..."
+        use_fake = getattr(self.app, "use_fake_data", False)
+        if use_fake:
+            text = "MeshCore: fake data mode"
             classes = {"-connecting"}
+        elif service:
+            status = service.status
+            message = status.message or ("Connected" if service.is_connected else "Idle")
+            progress = ""
+            if status.total:
+                progress = f" ({status.current}/{status.total})"
+            text = f"MeshCore: {message}{progress}"
+            classes = {self._class_for_state(status.state, service.is_connected)}
         else:
             text = "MeshCore: unavailable"
             classes = {"-error"}
@@ -43,3 +49,10 @@ class ConnectionStatusFooter(Footer):
         widget.remove_class("-error")
         for cls in classes:
             widget.add_class(cls)
+
+    def _class_for_state(self, state: str, connected: bool) -> str:
+        if state == "connected" or connected:
+            return "-connected"
+        if state == "error":
+            return "-error"
+        return "-connecting"

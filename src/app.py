@@ -57,7 +57,7 @@ class MeshCoreTuiApp(App):
         "channel": ChannelChatScreen,
     }
 
-    DEFAULT_MODE = "settings"
+    DEFAULT_MODE = "chat"
     BINDINGS = [
         Binding(
             "1",
