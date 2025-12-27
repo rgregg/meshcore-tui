@@ -115,6 +115,13 @@ class MeshCoreTuiApp(App):
                 self._command_refresh_channels,
             )
         )
+        commands.append(
+            SystemCommand(
+                "Reconnect MeshCore",
+                "Restart the connection to the MeshCore companion",
+                self._command_reconnect_meshcore,
+            )
+        )
         return commands
 
     async def _command_refresh_channels(self) -> None:
@@ -128,6 +135,17 @@ class MeshCoreTuiApp(App):
         except Exception as exc:  # pragma: no cover - requires live device
             self.notify(f"Channel refresh failed: {exc}", severity="error")
 
+    async def _command_reconnect_meshcore(self) -> None:
+        service = getattr(self, "mesh_service", None)
+        if not service:
+            self.notify("MeshCore service unavailable.", severity="error")
+            return
+        await service.stop()
+        try:
+            await service.start()
+            self.notify("MeshCore reconnected.", title="MeshCore", severity="information")
+        except Exception as exc:  # pragma: no cover - requires live device
+            self.notify(f"MeshCore reconnect failed: {exc}", severity="error", timeout=10)
 
 
 if __name__ == "__main__":
