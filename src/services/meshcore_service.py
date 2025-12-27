@@ -153,6 +153,7 @@ class MeshCoreService:
         if max_channels:
             self._set_status("Refreshing channels…", 0, max_channels, state="refreshing_channels")
         channels: Dict[int, MeshCoreChannelInfo] = {}
+        logger.info("Refreshing channels; device reports max_channels=%s", max_channels)
         for idx in range(max_channels):
             try:
                 event = await meshcore.commands.get_channel(idx)
@@ -168,6 +169,12 @@ class MeshCoreService:
                 )
                 continue
             channel_name = event.payload.get("channel_name", f"Channel {idx}")
+            logger.info(
+                "Fetched channel idx=%s name=%s secret=%s",
+                idx,
+                channel_name,
+                bool(event.payload.get("channel_secret")),
+            )
             channels[idx] = MeshCoreChannelInfo(
                 index=idx,
                 name=channel_name,
