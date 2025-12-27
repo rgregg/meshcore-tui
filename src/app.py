@@ -105,8 +105,9 @@ class MeshCoreTuiApp(App):
                 await self.mesh_service.stop()
             except Exception as exc:  # pragma: no cover - hardware specific
                 self.log(f"MeshCore shutdown failed: {exc}")
-        self.console.clear()
         await super().action_quit()
+        self.console.clear()
+        self.console.show_cursor()
 
     def get_system_commands(self, screen: "Screen") -> list[SystemCommand]:
         commands = list(super().get_system_commands(screen))
