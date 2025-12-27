@@ -255,6 +255,11 @@ class MeshCoreService:
         channel = self._channels.get(idx)
         prefix = event.payload.get("pubkey_prefix", "")
         contact = self._find_contact_by_prefix(prefix)
+        if channel is None:
+            name = event.payload.get("channel_name") or f"Channel {idx}"
+            channel = MeshCoreChannelInfo(index=idx, name=name)
+            self._channels[idx] = channel
+            logger.warning("Channel info missing for idx %s; created placeholder '%s'", idx, name)
         logger.info(
             "Received channel message on %s from %s: %s",
             channel.name if channel else idx,
@@ -413,6 +418,8 @@ class MeshCoreService:
             await self._handle_contacts(event)
         elif event.type == EventType.NEW_CONTACT:
             await self._handle_new_contact(event)
+        else:
+            logger.debug("Unhandled pending event type: %s", event.type)
 
 
 __all__ = ["MeshCoreService", "MeshCoreChannelInfo", "MeshCoreContactInfo", "MeshCoreStatus"]

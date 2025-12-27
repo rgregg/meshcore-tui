@@ -2,9 +2,12 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 import asyncio
 import uuid
+import logging
 from typing import Any, Literal
 
 from services.meshcore_service import MeshCoreService, MeshCoreChannelInfo, MeshCoreContactInfo
+
+logger = logging.getLogger(__name__)
 
 class BaseContainerItem():
     name: str
@@ -248,8 +251,10 @@ class MeshCoreChatProvider(BaseDataProvider):
     def send_message(self, message: BaseMessage) -> bool:
         if isinstance(message, ChannelMessage):
             if message.channel.index is None:
+                logger.error("Cannot send channel message; channel %s has no index", message.channel.name)
                 return False
             if not self._service.is_connected:
+                logger.error("Cannot send channel message; MeshCore is not connected")
                 return False
             logger.info("Sending channel message to %s: %s", message.channel.name, message.text)
             asyncio.create_task(
@@ -260,8 +265,10 @@ class MeshCoreChatProvider(BaseDataProvider):
             return True
         if isinstance(message, UserMessage):
             if not message.receiver.public_key:
+                logger.error("Cannot send user message; receiver %s lacks public key", message.receiver.name)
                 return False
             if not self._service.is_connected:
+                logger.error("Cannot send user message; MeshCore is not connected")
                 return False
             asyncio.create_task(
                 self._service.send_direct_message(message.receiver.public_key, message.text)
