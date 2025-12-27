@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+import argparse
 
 from textual import getters, work
 from textual.app import App, SystemCommand
@@ -44,10 +45,11 @@ class MeshCoreTuiApp(App):
     CSS_PATH = "app.tcss"
     TITLE = "MeshCore Companion Terminal Interface"
 
-    def __init__(self) -> None:
+    def __init__(self, *, use_fake_data: bool = False) -> None:
         super().__init__()
         self.config_service = ConfigService()
-        self.mesh_service = MeshCoreService(self.config_service)
+        self.use_fake_data = use_fake_data
+        self.mesh_service = None if use_fake_data else MeshCoreService(self.config_service)
 
     MODES = {
         "settings": SettingsScreen,
@@ -78,13 +80,14 @@ class MeshCoreTuiApp(App):
     ]
 
     async def on_mount(self) -> None:
-        async def _start_meshcore() -> None:
-            try:
-                await self.mesh_service.start()
-            except Exception as exc:  # pragma: no cover - requires device
-                self.log(f"MeshCore connection failed: {exc}")
+        if self.mesh_service:
+            async def _start_meshcore() -> None:
+                try:
+                    await self.mesh_service.start()
+                except Exception as exc:  # pragma: no cover - requires device
+                    self.log(f"MeshCore connection failed: {exc}")
 
-        asyncio.create_task(_start_meshcore())
+            asyncio.create_task(_start_meshcore())
 
     def get_system_commands(self, screen: "Screen") -> list[SystemCommand]:
         commands = list(super().get_system_commands(screen))
@@ -111,5 +114,12 @@ class MeshCoreTuiApp(App):
 
 
 if __name__ == "__main__":
-    app = MeshCoreTuiApp()
+    parser = argparse.ArgumentParser(description="MeshCore TUI")
+    parser.add_argument(
+        "--fake-data",
+        action="store_true",
+        help="Use in-memory fake data instead of connecting to MeshCore",
+    )
+    args = parser.parse_args()
+    app = MeshCoreTuiApp(use_fake_data=args.fake_data)
     app.run()

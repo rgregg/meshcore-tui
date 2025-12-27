@@ -134,7 +134,11 @@ class BaseChatScreen(Screen):
         return self._data_provider
 
     def create_data_provider(self) -> BaseDataProvider:
-        return FakeDataProvider(self.on_data_update)
+        if getattr(self.app, "use_fake_data", False):
+            return FakeDataProvider(self.on_data_update)
+        raise RuntimeError(
+            "Real data provider must be supplied when not running with --fake-data"
+        )
     
     def set_loader_visible(self, visibile: bool) -> None:
         loader = self.query_one("#LoadingIndicator")
@@ -258,10 +262,12 @@ class ChannelChatScreen(BaseChatScreen):
         self.app.push_screen(screen, callback)
 
     def create_data_provider(self) -> BaseDataProvider:
+        if getattr(self.app, "use_fake_data", False):
+            return super().create_data_provider()
         service = getattr(self.app, "mesh_service", None)
-        if service:
-            return MeshCoreChatProvider(self.on_data_update, service, "channels")
-        return super().create_data_provider()
+        if not service:
+            raise RuntimeError("MeshCore service unavailable for channel provider")
+        return MeshCoreChatProvider(self.on_data_update, service, "channels")
         
 
 class UserChatScreen(BaseChatScreen):
@@ -297,7 +303,9 @@ class UserChatScreen(BaseChatScreen):
         self.app.push_screen(screen, callback)
 
     def create_data_provider(self) -> BaseDataProvider:
+        if getattr(self.app, "use_fake_data", False):
+            return super().create_data_provider()
         service = getattr(self.app, "mesh_service", None)
-        if service:
-            return MeshCoreChatProvider(self.on_data_update, service, "users")
-        return super().create_data_provider()
+        if not service:
+            raise RuntimeError("MeshCore service unavailable for chat provider")
+        return MeshCoreChatProvider(self.on_data_update, service, "users")
