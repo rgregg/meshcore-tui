@@ -67,7 +67,6 @@ class BaseMessage(ABC):
 
 
 class ChannelMessage(BaseMessage):
-
     def __init__(self, channel:MeshCoreChannel, text:str, timestamp: datetime, sender: MeshCoreNode):
         super().__init__(text, timestamp, sender)
         self.channel = channel
@@ -252,6 +251,7 @@ class MeshCoreChatProvider(BaseDataProvider):
                 return False
             if not self._service.is_connected:
                 return False
+            logger.info("Sending channel message to %s: %s", message.channel.name, message.text)
             asyncio.create_task(
                 self._service.send_channel_message(message.channel.index, message.text)
             )

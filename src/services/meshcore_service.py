@@ -193,12 +193,14 @@ class MeshCoreService:
         await self._ready.wait()
         if not self._meshcore:
             raise RuntimeError("MeshCore connection unavailable")
+        logger.info("Sending direct message to %s: %s", public_key, text)
         await self._meshcore.commands.send_msg(public_key, text)
 
     async def send_channel_message(self, channel_index: int, text: str) -> None:
         await self._ready.wait()
         if not self._meshcore:
             raise RuntimeError("MeshCore connection unavailable")
+        logger.info("Sending channel message to index %s: %s", channel_index, text)
         await self._meshcore.commands.send_chan_msg(channel_index, text)
 
     def _wire_event_handlers(self, meshcore: MeshCore) -> None:
@@ -235,6 +237,12 @@ class MeshCoreService:
     async def _handle_contact_message(self, event: Event) -> None:
         prefix = event.payload.get("pubkey_prefix", "")
         contact = self._find_contact_by_prefix(prefix)
+        logger.info(
+            "Received contact message from %s (%s): %s",
+            prefix,
+            contact.display_name if contact else "unknown",
+            event.payload.get("text", ""),
+        )
         data = {
             "contact": contact,
             "text": event.payload.get("text", ""),
@@ -247,6 +255,12 @@ class MeshCoreService:
         channel = self._channels.get(idx)
         prefix = event.payload.get("pubkey_prefix", "")
         contact = self._find_contact_by_prefix(prefix)
+        logger.info(
+            "Received channel message on %s from %s: %s",
+            channel.name if channel else idx,
+            prefix,
+            event.payload.get("text", ""),
+        )
         data = {
             "channel": channel,
             "text": event.payload.get("text", ""),
