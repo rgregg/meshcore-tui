@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+from pathlib import Path
 
 from textual import getters, work
 from textual.app import App
@@ -13,6 +15,29 @@ from settings import SettingsScreen
 from chat import ChannelChatScreen, UserChatScreen
 from services.config_service import ConfigService
 from services.meshcore_service import MeshCoreService
+
+LOG_DIR = Path("logs")
+LOG_FILE = LOG_DIR / "meshcore-tui.log"
+
+
+def configure_logging() -> None:
+    """Write textual/meshcore logs to logs/meshcore-tui.log."""
+    if getattr(configure_logging, "_configured", False):  # type: ignore[attr-defined]
+        return
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
+    file_handler.setLevel(logging.INFO)
+    formatter = logging.Formatter(
+        "%(asctime)s %(levelname)s %(name)s: %(message)s", "%Y-%m-%d %H:%M:%S"
+    )
+    file_handler.setFormatter(formatter)
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(file_handler)
+    setattr(configure_logging, "_configured", True)  # type: ignore[attr-defined]
+
+
+configure_logging()
 
 class MeshCoreTuiApp(App):
     """Main entry point for MeshCore TUI App"""  

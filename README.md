@@ -29,3 +29,7 @@ The chat panes now use `MeshCoreService` (`src/services/meshcore_service.py`) to
 - `channel_refresh_seconds` controls how frequently channel metadata is refreshed in the background.
 - When a connection is available, `ChannelChatScreen`/`UserChatScreen` automatically subscribe to MeshCore events; otherwise they fall back to the fake provider.
 - The service starts automatically when the app mounts. Watch the terminal logs for connection failures and adjust config accordingly.
+
+## Logging
+
+Runtime logs from Textual and the MeshCore SDK mirror to `logs/meshcore-tui.log`. Use this file to capture stack traces or connection errors that might be hidden behind the UI when running with `textual run --dev`. The `logs/` directory is git-ignored; feel free to tail the file or share sanitized snippets in bug reports.
