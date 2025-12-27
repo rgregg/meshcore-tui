@@ -142,7 +142,7 @@ class MeshCoreService:
         try:
             self._contacts_ready.clear()
             await meshcore.ensure_contacts()
-            await asyncio.wait_for(self._contacts_ready.wait(), timeout=10)
+            await asyncio.wait_for(self._contacts_ready.wait(), timeout=30)
             logger.info("Contact refresh completed")
         except asyncio.TimeoutError:
             logger.warning("Contact refresh timed out")
