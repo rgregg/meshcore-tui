@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.widgets import Footer, Static
-from textual._dom_node import NoMatches
+from textual.css.query import NoMatches
 
 
 class ConnectionStatusFooter(Footer):
