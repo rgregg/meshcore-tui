@@ -115,13 +115,22 @@ class MeshCoreService:
 
     async def refresh_channels(self) -> Sequence[MeshCoreChannelInfo]:
         meshcore = self._meshcore
-        if not meshcore:
+        if not meshcore or not meshcore.is_connected:
+            logger.warning("Skipping channel refresh; MeshCore not connected")
             return []
-        info_event = await meshcore.commands.send_device_query()
+        try:
+            info_event = await meshcore.commands.send_device_query()
+        except Exception as exc:  # pragma: no cover - hardware specific
+            logger.warning("MeshCore device query failed: %s", exc)
+            return list(self._channels.values())
         max_channels = info_event.payload.get("max_channels", 0)
         channels: Dict[int, MeshCoreChannelInfo] = {}
         for idx in range(max_channels):
-            event = await meshcore.commands.get_channel(idx)
+            try:
+                event = await meshcore.commands.get_channel(idx)
+            except Exception as exc:  # pragma: no cover - hardware specific
+                logger.warning("Failed to fetch channel %s: %s", idx, exc)
+                break
             if event.type != EventType.CHANNEL_INFO:
                 continue
             channel_name = event.payload.get("channel_name", f"Channel {idx}")
