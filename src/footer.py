@@ -26,7 +26,7 @@ class ConnectionStatusFooter(Footer):
 
     def _update_status(self) -> None:
         widget = self._status_widget
-        if widget is None or widget.is_destroyed:
+        if widget is None or getattr(widget, "is_destroyed", False):
             try:
                 widget = self.query_one(f"#{self._status_id}", Static)
             except NoMatches:
