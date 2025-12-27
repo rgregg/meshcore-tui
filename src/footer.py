@@ -33,14 +33,11 @@ class ConnectionStatusFooter(Footer):
         self._update_status()
 
     def _update_status(self) -> None:
-        widget = self._status_widget
-        if widget is None:
-            try:
-                widget = self.query_one(f"#{self._status_id}", Static)
-            except NoMatches:
-                logger.debug("Status label missing; skipping update.")
-                return
-            self._status_widget = widget
+        try:
+            widget = self.query_one(f"#{self._status_id}", Static)
+        except NoMatches:
+            logger.warning("Status label missing; skipping update.")
+            return
         app = getattr(self, "app", None)
         if app is None:
             return
