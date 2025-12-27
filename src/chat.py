@@ -4,6 +4,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import ScrollableContainer, VerticalScroll, Horizontal, HorizontalScroll, Vertical
 from textual.widgets import Input, Markdown, Static, Collapsible, LoadingIndicator, ListView, ListItem, Label, Header
+from textual.css.query import NoMatches
 from textual.screen import Screen
 from data import (
     BaseContainerItem,
@@ -121,11 +122,17 @@ class BaseChatScreen(Screen):
 
     @property
     def message_listview(self) -> ListView:
-        return self.query_one("#MessageList")
+        try:
+            return self.query_one("#MessageList")
+        except NoMatches:
+            return None
     
     @property
     def container_listview(self) -> ListView:
-        return self.query_one("#LeftPaneListView")
+        try:
+            return self.query_one("#LeftPaneListView")
+        except NoMatches:
+            return None
 
     @property
     def data_provider(self) -> BaseDataProvider:
@@ -150,6 +157,9 @@ class BaseChatScreen(Screen):
         self.log(f"Reloading messages for {name}")
 
         listview = self.message_listview
+        if listview is None:
+            self.log("Message list view missing; skipping reload")
+            return
         listview.clear()
         channel = self.get_data_container_by_name(name)
         if channel is None:
@@ -168,10 +178,14 @@ class BaseChatScreen(Screen):
         event.input.clear()
 
     def on_data_update(self, event:DataUpdate):
+        listview = self.container_listview
+        if listview is None:
+            self.log("Container list view missing; deferring update")
+            return
         if event.update_type == "add" and event.item is None:
             # New channel/chat container
             new_channel = ChannelListViewItem(event.container)
-            self.container_listview.append(new_channel)
+            listview.append(new_channel)
             if self.selected_container is None:
                 self._focus_container(event.container)
                 asyncio.create_task(self.action_select_channel(event.container.name))
@@ -179,11 +193,15 @@ class BaseChatScreen(Screen):
 
         if event.container == self.selected_container and event.update_type == "add" and event.item:
             new_item = MessageListViewItem(event.item)
-            self.message_listview.append(new_item)
+            listview = self.message_listview
+            if listview:
+                listview.append(new_item)
 
     def _focus_container(self, container: BaseContainerItem) -> None:
         """Move the left list selection to the provided container if it exists."""
         listview = self.container_listview
+        if listview is None:
+            return
         for idx, child in enumerate(listview.children):
             if getattr(child, "item", None) == container:
                 listview.index = idx
