@@ -25,8 +25,11 @@ class ConnectionStatusFooter(Footer):
     def on_mount(self) -> None:
         super().on_mount()
         self._status_widget = self.query_one(f"#{self._status_id}", Static)
-        self.set_interval(1.0, self._update_status)
-        logger.debug("ConnectionStatusFooter mounted; starting status updates.")
+        self._status_timer = self.set_interval(1.0, self._on_status_timer)
+        logger.info("ConnectionStatusFooter mounted; starting status updates.")
+        self._update_status()
+
+    def _on_status_timer(self) -> None:
         self._update_status()
 
     def _update_status(self) -> None:
@@ -57,7 +60,7 @@ class ConnectionStatusFooter(Footer):
         else:
             text = "MeshCore: unavailable"
             classes = {"-error"}
-        logger.debug("Footer status update: %s", text)
+        logger.info("Footer status update: %s", text)
         widget.update(text)
         widget.remove_class("-connected")
         widget.remove_class("-connecting")
