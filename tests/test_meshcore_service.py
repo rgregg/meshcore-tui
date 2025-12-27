@@ -13,14 +13,20 @@ class FakeConfigService:
         self.config = AppConfig()
 
 
+class FakeCommands:
+    def __init__(self):
+        self.calls = []
+
+    async def get_contacts(self, lastmod=0, timeout=5):
+        self.calls.append((lastmod, timeout))
+        await asyncio.sleep(0)
+        return make_event(EventType.CONTACTS, {"last_mod": lastmod + 1})
+
+
 class FakeMeshCore:
     def __init__(self):
         self.is_connected = True
-        self.ensure_contacts_called = False
-
-    async def ensure_contacts(self) -> None:
-        self.ensure_contacts_called = True
-        await asyncio.sleep(0)
+        self.commands = FakeCommands()
 
 
 def make_event(event_type, payload):
@@ -38,7 +44,7 @@ async def test_refresh_contacts_waits_for_contacts_event():
     await service._handle_contacts(make_event(EventType.CONTACTS, {}))
     await asyncio.wait_for(task, timeout=1)
 
-    assert fake_mesh.ensure_contacts_called
+    assert fake_mesh.commands.calls
     assert service._contacts_ready.is_set()
 
 
