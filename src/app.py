@@ -147,12 +147,22 @@ class MeshCoreTuiApp(App):
         if not service:
             self.notify("MeshCore service unavailable.", severity="error")
             return
-        await service.stop()
-        try:
-            await service.start()
+        self.notify("Reconnecting to MeshCore…", severity="information")
+
+        async def _reconnect() -> None:
+            try:
+                await service.stop()
+            except Exception as exc:  # pragma: no cover - hardware specific
+                self.log(f"MeshCore stop failed during reconnect: {exc}")
+            try:
+                await service.start()
+            except Exception as exc:  # pragma: no cover - requires live device
+                self.log(f"MeshCore reconnect failed: {exc}")
+                self.notify(f"MeshCore reconnect failed: {exc}", severity="error", timeout=10)
+                return
             self.notify("MeshCore reconnected.", title="MeshCore", severity="information")
-        except Exception as exc:  # pragma: no cover - requires live device
-            self.notify(f"MeshCore reconnect failed: {exc}", severity="error", timeout=10)
+
+        asyncio.create_task(_reconnect())
 
 
 if __name__ == "__main__":
