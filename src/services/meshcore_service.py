@@ -301,6 +301,7 @@ class MeshCoreService:
                 break
             if event.type in (EventType.NO_MORE_MSGS, EventType.ERROR):
                 break
+            await self._process_pending_event(event)
             drained += 1
             self._set_status("Syncing messages…", drained, limit, state="syncing")
             await asyncio.sleep(0)  # yield to the UI loop
@@ -387,6 +388,17 @@ class MeshCoreService:
             total=total,
             state=state or self._status.state,
         )
+
+    async def _process_pending_event(self, event: Event) -> None:
+        """Route drained message events through existing handlers."""
+        if event.type == EventType.CONTACT_MSG_RECV:
+            await self._handle_contact_message(event)
+        elif event.type == EventType.CHANNEL_MSG_RECV:
+            await self._handle_channel_message(event)
+        elif event.type == EventType.CONTACTS:
+            await self._handle_contacts(event)
+        elif event.type == EventType.NEW_CONTACT:
+            await self._handle_new_contact(event)
 
 
 __all__ = ["MeshCoreService", "MeshCoreChannelInfo", "MeshCoreContactInfo", "MeshCoreStatus"]
