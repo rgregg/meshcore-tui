@@ -99,6 +99,13 @@ class MeshCoreTuiApp(App):
 
         await self.switch_mode("chat")
 
+    async def on_shutdown(self) -> None:
+        if self.mesh_service:
+            try:
+                await self.mesh_service.stop()
+            except Exception as exc:  # pragma: no cover - hardware specific
+                self.log(f"MeshCore shutdown failed: {exc}")
+
     def get_system_commands(self, screen: "Screen") -> list[SystemCommand]:
         commands = list(super().get_system_commands(screen))
         commands.append(
