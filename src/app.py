@@ -100,12 +100,16 @@ class MeshCoreTuiApp(App):
         await self.switch_mode("chat")
 
     async def action_quit(self) -> None:
+        self.log("Quit requested; stopping MeshCore service.")
         if self.mesh_service:
             try:
                 await self.mesh_service.stop()
             except Exception as exc:  # pragma: no cover - hardware specific
                 self.log(f"MeshCore shutdown failed: {exc}")
+            else:
+                self.log("MeshCore service stopped.")
         await super().action_quit()
+        self.log("Textual app shut down, clearing console.")
         self.console.clear()
         self.console.show_cursor()
 
