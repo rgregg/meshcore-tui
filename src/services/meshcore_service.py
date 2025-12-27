@@ -11,7 +11,11 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence
 from meshcore import MeshCore, EventType
 from meshcore.events import Event
 
-from services.config_service import ConfigService, MeshcoreConfig
+from services.config_service import (
+    CompanionConnectionConfig,
+    ConfigService,
+    MeshcoreConfig,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +76,7 @@ class MeshCoreService:
             await self._meshcore.ensure_contacts()
             await self._meshcore.commands.send_device_query()
             await self.refresh_channels()
+            await self._drain_pending_messages()
             await self._meshcore.start_auto_message_fetching()
             self._running = True
             self._ready.set()
@@ -190,10 +195,10 @@ class MeshCoreService:
         contact = self._find_contact_by_prefix(prefix)
         data = {
             "channel": channel,
-            "contact": contact,
-            "sender_prefix": prefix,
             "text": event.payload.get("text", ""),
             "timestamp": event.payload.get("sender_timestamp"),
+            "contact": contact,
+            "sender_prefix": prefix,
         }
         await self._notify(self._channel_message_listeners, data)
 
@@ -227,6 +232,25 @@ class MeshCoreService:
         except Exception:  # pragma: no cover
             logger.exception("Listener failed")
 
+    async def _drain_pending_messages(self, limit: int = 200) -> None:
+        """Fetch pending channel/contact messages so panes show history on connect."""
+        meshcore = self._meshcore
+        if not meshcore:
+            return
+        drained = 0
+        while drained < limit:
+            try:
+                event = await meshcore.commands.get_msg(timeout=2.0)
+            except Exception as exc:  # pragma: no cover - hardware specific
+                logger.warning("Pending message fetch failed: %s", exc)
+                break
+            if event.type in (EventType.NO_MORE_MSGS, EventType.ERROR):
+                break
+            drained += 1
+            await asyncio.sleep(0)  # yield to the UI loop
+        if drained == limit:
+            logger.warning("Drained %s pending messages; stopping to avoid loops", limit)
+
     async def _build_connection(self) -> MeshCore:
         companion = self.config.companion
         transport = companion.transport.lower()
@@ -239,9 +263,25 @@ class MeshCoreService:
                 raise ValueError("Serial transport requires 'device' or 'endpoint'")
             return await MeshCore.create_serial(port)
         if transport == "bluetooth":
-            device = companion.device if companion.device and companion.device != "auto" else None
-            address = companion.endpoint or None
-            return await MeshCore.create_ble(address=address, device=device)
+            addresses = self._collect_address_candidates(companion)
+            devices = self._collect_device_candidates(companion)
+            last_error: Exception | None = None
+            for address in addresses or [None]:
+                for device in devices or [None]:
+                    try:
+                        return await MeshCore.create_ble(address=address, device=device)
+                    except Exception as exc:  # pragma: no cover - hardware specific
+                        last_error = exc
+                        logger.warning(
+                            "Failed BLE connect attempt (address=%s device=%s): %s",
+                            address,
+                            device,
+                            exc,
+                        )
+                        await asyncio.sleep(1)
+            if last_error:
+                raise last_error
+            raise ConnectionError("Unable to connect to MeshCore companion via BLE")
         raise ValueError(f"Unsupported transport: {transport}")
 
     def _parse_tcp_endpoint(self, endpoint: str) -> tuple[str, int]:
@@ -249,6 +289,36 @@ class MeshCoreService:
             raise ValueError("TCP endpoint must be host:port")
         host, port_str = endpoint.split(":", 1)
         return host, int(port_str)
+
+    def _collect_address_candidates(self, companion: CompanionConnectionConfig) -> list[str]:
+        candidates: list[str] = []
+        for value in (companion.endpoint, companion.device):
+            value = (value or "").strip()
+            if not value or value.lower() == "auto":
+                continue
+            if self._looks_like_mac(value):
+                candidates.append(value)
+        return candidates
+
+    def _collect_device_candidates(self, companion: CompanionConnectionConfig) -> list[str]:
+        candidates: list[str] = []
+        for value in (companion.device, companion.endpoint):
+            value = (value or "").strip()
+            if not value or value.lower() == "auto":
+                continue
+            # Always include raw value as device hint; MACs may work as BLE path on some stacks
+            candidates.append(value)
+        return candidates
+
+    @staticmethod
+    def _looks_like_mac(value: str) -> bool:
+        value = value.strip()
+        if not value:
+            return False
+        parts = value.split(":")
+        if len(parts) not in (6, 8):
+            return False
+        return all(len(part) in (2, 4) and all(ch in "0123456789ABCDEFabcdef" for ch in part) for part in parts)
 
 
 __all__ = ["MeshCoreService", "MeshCoreChannelInfo", "MeshCoreContactInfo"]
