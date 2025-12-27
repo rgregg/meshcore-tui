@@ -4,6 +4,7 @@ import asyncio
 import logging
 from pathlib import Path
 import argparse
+import sys
 
 from textual import getters, work
 from textual.app import App, SystemCommand
@@ -33,8 +34,14 @@ def configure_logging() -> None:
     )
     file_handler.setFormatter(formatter)
     root_logger = logging.getLogger()
+    for handler in list(root_logger.handlers):
+        root_logger.removeHandler(handler)
     root_logger.setLevel(logging.INFO)
+    root_logger.propagate = False
     root_logger.addHandler(file_handler)
+    meshcore_logger = logging.getLogger("meshcore")
+    meshcore_logger.handlers.clear()
+    meshcore_logger.propagate = True
     setattr(configure_logging, "_configured", True)  # type: ignore[attr-defined]
 
 
@@ -57,7 +64,7 @@ class MeshCoreTuiApp(App):
         "channel": ChannelChatScreen,
     }
 
-    DEFAULT_MODE = "chat"
+    DEFAULT_MODE = "settings"
     BINDINGS = [
         Binding(
             "1",
@@ -86,8 +93,11 @@ class MeshCoreTuiApp(App):
                     await self.mesh_service.start()
                 except Exception as exc:  # pragma: no cover - requires device
                     self.log(f"MeshCore connection failed: {exc}")
+                    self.notify(f"MeshCore connection failed: {exc}", severity="error", timeout=10)
 
             asyncio.create_task(_start_meshcore())
+
+        await self.switch_mode("chat")
 
     def get_system_commands(self, screen: "Screen") -> list[SystemCommand]:
         commands = list(super().get_system_commands(screen))
