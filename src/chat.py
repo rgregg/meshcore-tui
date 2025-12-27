@@ -1,9 +1,9 @@
 from abc import ABC, abstractmethod
+import asyncio
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import ScrollableContainer, VerticalScroll, Horizontal, HorizontalScroll, Vertical
 from textual.widgets import Input, Markdown, Static, Collapsible, LoadingIndicator, ListView, ListItem, Label, Header
-from footer import ConnectionStatusFooter
 from textual.screen import Screen
 from data import (
     BaseContainerItem,
@@ -16,6 +16,7 @@ from data import (
     MeshCoreChatProvider,
 )
 from dialog import PromptDialog
+from footer import ConnectionStatusFooter
 
 # class Content(VerticalScroll, can_focus=False):
 #     """Non focusable vertical scroll."""
@@ -39,13 +40,14 @@ class BaseChatScreen(Screen):
     channel_items: list[ChannelListViewItem]
     left_pane_title = "bad_screen_type"
     message_items = list[MessageListViewItem]()
-    selected_container: BaseContainerItem
+    selected_container: BaseContainerItem | None = None
     _data_provider: BaseDataProvider | None = None
 
     CSS_PATH = "chat.tcss"
 
     def __init__(self) -> None:
         super().__init__()
+        self.selected_container = None
 
     def compose(self) -> ComposeResult:
         self.channel_items = [ChannelListViewItem(c) for c in self.get_data_containers()]
@@ -61,12 +63,15 @@ class BaseChatScreen(Screen):
                 yield LoadingIndicator(id="LoadingIndicator")
         yield ConnectionStatusFooter()
 
+    async def on_mount(self) -> None:
+        await self._maybe_select_initial_container()
+
     @abstractmethod
     def get_data_containers(self) -> list[BaseContainerItem]:
         pass
     
     @abstractmethod
-    def get_data_container_by_name(self, name:str) -> BaseContainerItem:
+    def get_data_container_by_name(self, name:str) -> BaseContainerItem | None:
         pass
 
     @abstractmethod
@@ -89,6 +94,9 @@ class BaseChatScreen(Screen):
         """Selects a new channel and updates the UI"""
         self.log(f"You selected: {name}")
         channel = self.get_data_container_by_name(name)
+        if channel is None:
+            self.log(f"Channel {name} was not found")
+            return
         self.selected_container = channel
 
         # Update the title box
@@ -99,6 +107,7 @@ class BaseChatScreen(Screen):
         else:
             self.log("No label object found in select_channel")
         
+        self._focus_container(channel)
 
         self.set_loader_visible(True)
         self.message_items.clear()
@@ -133,25 +142,60 @@ class BaseChatScreen(Screen):
         listview = self.message_listview
         listview.clear()
         channel = self.get_data_container_by_name(name)
+        if channel is None:
+            self.set_loader_visible(False)
+            return
         items = [MessageListViewItem(m) for m in self.get_data_container_items(channel)]
         listview.extend(items)
         self.set_loader_visible(False)
 
     async def on_input_submitted(self, event:Input.Submitted):
         self.log(f"Input received: {event.value}")
+        if not self.selected_container:
+            self.log("Ignoring message send because no chat/channel is selected")
+            return
         self.send_message(event.value)
         event.input.clear()
 
     def on_data_update(self, event:DataUpdate):
-        if event.container == self.selected_container:
-            if event.update_type == "add":
-                if event.item is None:
-                    # New channel was added
-                    new_channel = ChannelListViewItem(event.container)
-                    self.container_listview.append(new_channel)
-                else:
-                    new_item = MessageListViewItem(event.item)
-                    self.message_listview.append(new_item)
+        if event.update_type == "add" and event.item is None:
+            # New channel/chat container
+            new_channel = ChannelListViewItem(event.container)
+            self.container_listview.append(new_channel)
+            if self.selected_container is None:
+                self._focus_container(event.container)
+                asyncio.create_task(self.action_select_channel(event.container.name))
+            return
+
+        if event.container == self.selected_container and event.update_type == "add" and event.item:
+            new_item = MessageListViewItem(event.item)
+            self.message_listview.append(new_item)
+
+    def _focus_container(self, container: BaseContainerItem) -> None:
+        """Move the left list selection to the provided container if it exists."""
+        listview = self.container_listview
+        for idx, child in enumerate(listview.children):
+            if getattr(child, "item", None) == container:
+                listview.index = idx
+                break
+
+    async def _maybe_select_initial_container(self) -> None:
+        if self.selected_container is not None:
+            return
+        containers = self.get_data_containers()
+        if not containers:
+            return
+        first = containers[0]
+        self._focus_container(first)
+        await self.action_select_channel(first.name)
+
+    def _notify_error(self, message: str) -> None:
+        """Show a toast notification for errors."""
+        app = getattr(self, "app", None)
+        if app:
+            app.notify(message, severity="error")
+        else:
+            self.log(message)
 
 
 class ChannelChatScreen(BaseChatScreen):
@@ -165,7 +209,21 @@ class ChannelChatScreen(BaseChatScreen):
         super().__init__()
 
     def send_message(self, text):
-        self.data_provider.send_message(ChannelMessage(self.selected_container, text, None, self.data_provider.current_user))
+        channel = self.selected_container
+        if channel is None:
+            return
+        provider = self.data_provider
+        if isinstance(provider, MeshCoreChatProvider):
+            service = getattr(self.app, "mesh_service", None)
+            if not service or not service.is_connected:
+                self._notify_error("MeshCore radio offline. Unable to send channel message.")
+                return
+            if channel.index is None:
+                self._notify_error(f"Channel {channel.name} isn't provisioned on the radio.")
+                return
+        success = provider.send_message(ChannelMessage(channel, text, None, provider.current_user))
+        if not success and isinstance(provider, MeshCoreChatProvider):
+            self._notify_error("Failed to send message to MeshCore channel.")
     def get_data_containers(self):
         return self.data_provider.get_channels()
     def get_data_container_items(self, container):
@@ -201,6 +259,8 @@ class UserChatScreen(BaseChatScreen):
     def send_message(self, text):
         sender = self.data_provider.current_user
         receiver = self.selected_container
+        if receiver is None:
+            return
         self.log(f"Sending message {text} from {sender} to {receiver}")
         self.data_provider.send_message(UserMessage(text, None, sender, receiver))
     def get_data_containers(self):

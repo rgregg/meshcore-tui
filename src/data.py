@@ -247,14 +247,22 @@ class MeshCoreChatProvider(BaseDataProvider):
         return self.__messages.get(user, list[UserMessage]())
 
     def send_message(self, message: BaseMessage) -> bool:
-        if isinstance(message, ChannelMessage) and message.channel.index is not None:
+        if isinstance(message, ChannelMessage):
+            if message.channel.index is None:
+                return False
+            if not self._service.is_connected:
+                return False
             asyncio.create_task(
                 self._service.send_channel_message(message.channel.index, message.text)
             )
             self.__messages.setdefault(message.channel, []).append(message)
             self._on_update(DataUpdate("add", message.channel, message))
             return True
-        if isinstance(message, UserMessage) and message.receiver.public_key:
+        if isinstance(message, UserMessage):
+            if not message.receiver.public_key:
+                return False
+            if not self._service.is_connected:
+                return False
             asyncio.create_task(
                 self._service.send_direct_message(message.receiver.public_key, message.text)
             )
