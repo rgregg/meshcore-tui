@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.widgets import Footer, Static
+from textual._dom_node import NoMatches
 
 
 class ConnectionStatusFooter(Footer):
@@ -25,8 +26,12 @@ class ConnectionStatusFooter(Footer):
 
     def _update_status(self) -> None:
         widget = self._status_widget
-        if widget is None:
-            return
+        if widget is None or widget.is_destroyed:
+            try:
+                widget = self.query_one(f"#{self._status_id}", Static)
+            except NoMatches:
+                return
+            self._status_widget = widget
         app = getattr(self, "app", None)
         if app is None:
             return
