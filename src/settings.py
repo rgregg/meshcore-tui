@@ -1,10 +1,11 @@
 from textual.app import ComposeResult, ScreenStackError
 from textual.binding import Binding
 from textual.containers import VerticalScroll, Vertical
-from textual.widgets import Input, Markdown, Static, Footer, Button
+from textual.widgets import Input, Markdown, Static, Button
 from textual.screen import Screen
 
 from services.config_service import ConfigService
+from footer import ConnectionStatusFooter
 
 class Content(VerticalScroll, can_focus=False):
     """Non focusable vertical scroll."""
@@ -110,7 +111,7 @@ class SettingsScreen(Screen):
 
                 yield Button("Save changes", id="SaveButton")
                 yield Static("", id="SaveStatus")
-        yield Footer()
+        yield ConnectionStatusFooter()
 
     def on_mount(self) -> None:
         if not self._config_service:

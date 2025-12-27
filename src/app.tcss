@@ -1,3 +1,24 @@
 Screen {
     background: $panel;
 }
+
+#ConnectionStatusLabel {
+    padding: 0 1;
+    min-width: 18;
+    height: 1;
+    content-align: center middle;
+    color: $text-muted;
+    text-style: bold;
+}
+
+#ConnectionStatusLabel.-connected {
+    color: $text-success;
+}
+
+#ConnectionStatusLabel.-connecting {
+    color: $text;
+}
+
+#ConnectionStatusLabel.-error {
+    color: $text-error;
+}

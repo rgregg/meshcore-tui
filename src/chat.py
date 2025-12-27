@@ -2,7 +2,8 @@ from abc import ABC, abstractmethod
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import ScrollableContainer, VerticalScroll, Horizontal, HorizontalScroll, Vertical
-from textual.widgets import Input, Markdown, Static, Collapsible, Footer, LoadingIndicator, ListView, ListItem, Label, Header
+from textual.widgets import Input, Markdown, Static, Collapsible, LoadingIndicator, ListView, ListItem, Label, Header
+from footer import ConnectionStatusFooter
 from textual.screen import Screen
 from data import (
     BaseContainerItem,
@@ -58,7 +59,7 @@ class BaseChatScreen(Screen):
                 yield ListView(*self.message_items, id="MessageList")
                 yield Input(id="InputTextBox", classes="ChatTextBox", placeholder="Send a message", max_length=160)
                 yield LoadingIndicator(id="LoadingIndicator")
-        yield Footer()
+        yield ConnectionStatusFooter()
 
     @abstractmethod
     def get_data_containers(self) -> list[BaseContainerItem]:
