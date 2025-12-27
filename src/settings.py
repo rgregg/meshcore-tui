@@ -22,7 +22,11 @@ class SafeInput(Input):
             return
 
 class SettingsScreen(Screen):
-    BINDINGS = [Binding("ctrl+s", "save_config", "Save configuration")]
+    BINDINGS = [
+        Binding("1", "open_channels", "Channels"),
+        Binding("2", "open_chats", "Chats"),
+        Binding("ctrl+s", "save_config", "Save configuration"),
+    ]
 
     DEFAULT_CSS = """
     SettingsScreen {
@@ -110,6 +114,8 @@ class SettingsScreen(Screen):
                 )
 
                 yield Button("Save changes", id="SaveButton")
+                yield Button("Go to Channels (1)", id="OpenChannelsButton")
+                yield Button("Go to Chats (2)", id="OpenChatsButton")
                 yield Static("", id="SaveStatus")
         yield ConnectionStatusFooter()
 
@@ -122,6 +128,10 @@ class SettingsScreen(Screen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "SaveButton":
             self.action_save_config()
+        elif event.button.id == "OpenChannelsButton":
+            self.action_open_channels()
+        elif event.button.id == "OpenChatsButton":
+            self.action_open_chats()
 
     def action_save_config(self) -> None:
         """Persist settings to config/config.yaml."""
@@ -132,6 +142,12 @@ class SettingsScreen(Screen):
         self._config_service.save(self._config)
         status = self.query_one("#SaveStatus", Static)
         status.update("Configuration saved.")
+
+    def action_open_channels(self) -> None:
+        self.app.switch_mode("channel")
+
+    def action_open_chats(self) -> None:
+        self.app.switch_mode("chat")
 
     def _sync_inputs_to_config(self) -> None:
         if not self._config:

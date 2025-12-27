@@ -44,6 +44,12 @@ class BaseChatScreen(Screen):
     _data_provider: BaseDataProvider | None = None
 
     CSS_PATH = "chat.tcss"
+    NAV_BINDINGS = [
+        Binding("1", "open_channels", "Channels"),
+        Binding("2", "open_chats", "Chats"),
+        Binding("s", "open_settings", "Settings"),
+    ]
+    BINDINGS = NAV_BINDINGS
 
     def __init__(self) -> None:
         super().__init__()
@@ -197,10 +203,19 @@ class BaseChatScreen(Screen):
         else:
             self.log(message)
 
+    def action_open_channels(self) -> None:
+        self.app.switch_mode("channel")
+
+    def action_open_chats(self) -> None:
+        self.app.switch_mode("chat")
+
+    def action_open_settings(self) -> None:
+        self.app.switch_mode("settings")
+
 
 class ChannelChatScreen(BaseChatScreen):
     left_pane_title = "Channels"
-    BINDINGS = [
+    BINDINGS = BaseChatScreen.NAV_BINDINGS + [
         Binding("a", "add_channel", "Add channel"),
         Binding("d", "delete_channel", "Remove channel")
     ]
@@ -251,7 +266,7 @@ class ChannelChatScreen(BaseChatScreen):
 
 class UserChatScreen(BaseChatScreen):
     left_pane_title = "Chats"
-    BINDINGS = [
+    BINDINGS = BaseChatScreen.NAV_BINDINGS + [
         Binding("a", "add_chat", "New chat"),
         Binding("d", "delete_chat", "Delete chat")
     ]
