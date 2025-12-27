@@ -60,6 +60,8 @@ class MeshCoreService:
         self._running = False
         self._channel_refresh_task: asyncio.Task[None] | None = None
         self._status = MeshCoreStatus(message="Disconnected", state="disconnected")
+        self._contacts_ready = asyncio.Event()
+        self._contacts_ready.set()
 
     @property
     def config(self) -> MeshcoreConfig:
@@ -138,8 +140,12 @@ class MeshCoreService:
             return
         self._set_status("Refreshing contacts…", state="refreshing_contacts")
         try:
+            self._contacts_ready.clear()
             await meshcore.ensure_contacts()
+            await asyncio.wait_for(self._contacts_ready.wait(), timeout=10)
             logger.info("Contact refresh completed")
+        except asyncio.TimeoutError:
+            logger.warning("Contact refresh timed out")
         except Exception as exc:  # pragma: no cover - hardware specific
             logger.warning("Contact refresh failed: %s", exc)
         finally:
@@ -244,6 +250,7 @@ class MeshCoreService:
             logger.info("Synced contact %s (%s)", display_name, public_key)
         self._contacts.update(contacts)
         await self._notify(self._contact_listeners, list(self._contacts.values()))
+        self._contacts_ready.set()
 
     async def _handle_new_contact(self, event: Event) -> None:
         payload = event.payload
@@ -258,6 +265,7 @@ class MeshCoreService:
         logger.info("Discovered new contact %s (%s)", info.display_name, public_key)
         self._contacts[public_key] = info
         await self._notify(self._contact_listeners, list(self._contacts.values()))
+        self._contacts_ready.set()
 
     async def _handle_contact_message(self, event: Event) -> None:
         prefix = event.payload.get("pubkey_prefix", "")
