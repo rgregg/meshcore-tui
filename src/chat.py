@@ -55,6 +55,7 @@ class BaseChatScreen(Screen):
     def __init__(self) -> None:
         super().__init__()
         self.selected_container = None
+        self._pending_data_updates: list[DataUpdate] = []
 
     def compose(self) -> ComposeResult:
         self.channel_items = [ChannelListViewItem(c) for c in self.get_data_containers()]
@@ -72,6 +73,7 @@ class BaseChatScreen(Screen):
 
     async def on_mount(self) -> None:
         await self._maybe_select_initial_container()
+        self._flush_pending_data_updates()
 
     @abstractmethod
     def get_data_containers(self) -> list[BaseContainerItem]:
@@ -122,17 +124,11 @@ class BaseChatScreen(Screen):
 
     @property
     def message_listview(self) -> ListView:
-        try:
-            return self.query_one("#MessageList")
-        except NoMatches:
-            return None
+        return self.query_one("#MessageList")
     
     @property
     def container_listview(self) -> ListView:
-        try:
-            return self.query_one("#LeftPaneListView")
-        except NoMatches:
-            return None
+        return self.query_one("#LeftPaneListView")
 
     @property
     def data_provider(self) -> BaseDataProvider:
@@ -157,9 +153,6 @@ class BaseChatScreen(Screen):
         self.log(f"Reloading messages for {name}")
 
         listview = self.message_listview
-        if listview is None:
-            self.log("Message list view missing; skipping reload")
-            return
         listview.clear()
         channel = self.get_data_container_by_name(name)
         if channel is None:
@@ -178,14 +171,18 @@ class BaseChatScreen(Screen):
         event.input.clear()
 
     def on_data_update(self, event:DataUpdate):
-        listview = self.container_listview
-        if listview is None:
-            self.log("Container list view missing; deferring update")
+        if not self._ui_ready():
+            self.log("UI not ready; queueing data update")
+            self._pending_data_updates.append(event)
             return
+
+        self._apply_data_update(event)
+
+    def _apply_data_update(self, event: DataUpdate) -> None:
         if event.update_type == "add" and event.item is None:
             # New channel/chat container
             new_channel = ChannelListViewItem(event.container)
-            listview.append(new_channel)
+            self.container_listview.append(new_channel)
             if self.selected_container is None:
                 self._focus_container(event.container)
                 asyncio.create_task(self.action_select_channel(event.container.name))
@@ -193,15 +190,11 @@ class BaseChatScreen(Screen):
 
         if event.container == self.selected_container and event.update_type == "add" and event.item:
             new_item = MessageListViewItem(event.item)
-            listview = self.message_listview
-            if listview:
-                listview.append(new_item)
+            self.message_listview.append(new_item)
 
     def _focus_container(self, container: BaseContainerItem) -> None:
         """Move the left list selection to the provided container if it exists."""
         listview = self.container_listview
-        if listview is None:
-            return
         for idx, child in enumerate(listview.children):
             if getattr(child, "item", None) == container:
                 listview.index = idx
@@ -216,6 +209,22 @@ class BaseChatScreen(Screen):
         first = containers[0]
         self._focus_container(first)
         await self.action_select_channel(first.name)
+
+    def _flush_pending_data_updates(self) -> None:
+        if not self._pending_data_updates or not self._ui_ready():
+            return
+        pending = list(self._pending_data_updates)
+        self._pending_data_updates.clear()
+        for update in pending:
+            self._apply_data_update(update)
+
+    def _ui_ready(self) -> bool:
+        try:
+            self.query_one("#LeftPaneListView")
+            self.query_one("#MessageList")
+            return True
+        except NoMatches:
+            return False
 
     def _notify_error(self, message: str) -> None:
         """Show a toast notification for errors."""
