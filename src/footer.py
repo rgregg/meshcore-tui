@@ -1,9 +1,13 @@
 """Shared footer widgets."""
 from __future__ import annotations
 
+import logging
+
 from textual.app import ComposeResult
 from textual.widgets import Footer, Static
 from textual.css.query import NoMatches
+
+logger = logging.getLogger(__name__)
 
 
 class ConnectionStatusFooter(Footer):
@@ -22,6 +26,7 @@ class ConnectionStatusFooter(Footer):
         super().on_mount()
         self._status_widget = self.query_one(f"#{self._status_id}", Static)
         self.set_interval(1.0, self._update_status)
+        logger.debug("ConnectionStatusFooter mounted; starting status updates.")
         self._update_status()
 
     def _update_status(self) -> None:
@@ -30,6 +35,7 @@ class ConnectionStatusFooter(Footer):
             try:
                 widget = self.query_one(f"#{self._status_id}", Static)
             except NoMatches:
+                logger.debug("Status label missing; skipping update.")
                 return
             self._status_widget = widget
         app = getattr(self, "app", None)
@@ -51,6 +57,7 @@ class ConnectionStatusFooter(Footer):
         else:
             text = "MeshCore: unavailable"
             classes = {"-error"}
+        logger.debug("Footer status update: %s", text)
         widget.update(text)
         widget.remove_class("-connected")
         widget.remove_class("-connecting")
