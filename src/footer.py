@@ -27,7 +27,10 @@ class ConnectionStatusFooter(Footer):
         widget = self._status_widget
         if widget is None:
             return
-        service = getattr(self.app, "mesh_service", None)
+        app = getattr(self, "app", None)
+        if app is None:
+            return
+        service = getattr(app, "mesh_service", None)
         use_fake = getattr(self.app, "use_fake_data", False)
         if use_fake:
             text = "MeshCore: fake data mode"
