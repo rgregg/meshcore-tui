@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from textual import getters, work
-from textual.app import App
+from textual.app import App, SystemCommand
 from textual.command import CommandPalette
 from textual.binding import Binding
 # from textual.containers import ScrollableContainer, VerticalScroll, Horizontal, HorizontalScroll
@@ -85,6 +85,28 @@ class MeshCoreTuiApp(App):
                 self.log(f"MeshCore connection failed: {exc}")
 
         asyncio.create_task(_start_meshcore())
+
+    def get_system_commands(self, screen: "Screen") -> list[SystemCommand]:
+        commands = list(super().get_system_commands(screen))
+        commands.append(
+            SystemCommand(
+                "Refresh Channels",
+                "Fetch the latest channels from the MeshCore companion",
+                self._command_refresh_channels,
+            )
+        )
+        return commands
+
+    async def _command_refresh_channels(self) -> None:
+        service = getattr(self, "mesh_service", None)
+        if not service:
+            self.notify("MeshCore service unavailable.", severity="error")
+            return
+        try:
+            await service.refresh_channels()
+            self.notify("Channel list refreshed.", title="MeshCore", severity="information")
+        except Exception as exc:  # pragma: no cover - requires live device
+            self.notify(f"Channel refresh failed: {exc}", severity="error")
 
 
 
