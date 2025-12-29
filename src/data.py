@@ -17,32 +17,29 @@ class BaseContainerItem():
     """Implements the base class for a chat/channel/container item"""
     def __init__(self, name: str = None):
         self.name = name
+        self.unread_count = 0
 
     @property
     def display_text(self) -> str:
+        if self.unread_count > 0:
+            return f"{self.name} ({self.unread_count})"
         return self.name
+
+    def increment_unread(self) -> None:
+        self.unread_count += 1
+
+    def clear_unread(self) -> None:
+        self.unread_count = 0
 
     def __str__(self):
         return self.display_text
 
 class MeshCoreChannel(BaseContainerItem):
     """Data class for a channel"""
-    __unread_count: int
 
     def __init__(self, channel_name: str, index: int | None = None):
         super().__init__(channel_name)
         self.index = index
-        self.__unread_count = 0
-
-    def set_unread_count(self, unread_count: int):
-        self.__unread_count = unread_count
-
-    @property
-    def display_text(self) -> str:
-        if (self.__unread_count > 0):
-            return f"{self.name} [{self.__unread_count}]"
-        else:
-            return self.name
 
 class MeshCoreNode(BaseContainerItem):
     __route: str
@@ -287,6 +284,12 @@ class MeshCoreChatProvider(BaseDataProvider):
         raise NotImplementedError("Removing MeshCore contacts is not supported yet")
 
     def _handle_store_update(self, update: DataUpdate) -> None:
+        logger.debug(
+            "Data store update received: %s container=%s item_ts=%s",
+            update.update_type,
+            getattr(update.container, "name", getattr(update.container, "display_name", "unknown")),
+            getattr(update.item, "timestamp", None),
+        )
         container = update.container
         if self._mode == "channels" and isinstance(container, MeshCoreChannel):
             self._on_update(update)

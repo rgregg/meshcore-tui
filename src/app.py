@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import argparse
 import sys
@@ -23,13 +24,19 @@ LOG_DIR = Path("logs")
 LOG_FILE = LOG_DIR / "meshcore-tui.log"
 
 
-def configure_logging() -> None:
+def configure_logging(level: str | None = None) -> None:
     """Write textual/meshcore logs to logs/meshcore-tui.log."""
     if getattr(configure_logging, "_configured", False):  # type: ignore[attr-defined]
         return
+    log_level = getattr(logging, (level or "INFO").upper(), logging.INFO)
     LOG_DIR.mkdir(parents=True, exist_ok=True)
-    file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
-    file_handler.setLevel(logging.INFO)
+    file_handler = RotatingFileHandler(
+        LOG_FILE,
+        maxBytes=5 * 1024 * 1024,
+        backupCount=10,
+        encoding="utf-8",
+    )
+    file_handler.setLevel(log_level)
     formatter = logging.Formatter(
         "%(asctime)s %(levelname)s %(name)s: %(message)s", "%Y-%m-%d %H:%M:%S"
     )
@@ -37,15 +44,13 @@ def configure_logging() -> None:
     root_logger = logging.getLogger()
     for handler in list(root_logger.handlers):
         root_logger.removeHandler(handler)
-    root_logger.setLevel(logging.INFO)
+    root_logger.setLevel(log_level)
     root_logger.propagate = False
     root_logger.addHandler(file_handler)
     meshcore_logger = logging.getLogger("meshcore")
     meshcore_logger.handlers.clear()
     meshcore_logger.propagate = True
     setattr(configure_logging, "_configured", True)  # type: ignore[attr-defined]
-
-configure_logging()
 
 class MeshCoreTuiApp(App):
     """Main entry point for MeshCore TUI App"""  
@@ -55,6 +60,7 @@ class MeshCoreTuiApp(App):
     def __init__(self, *, use_fake_data: bool = False) -> None:
         super().__init__()
         self.config_service = ConfigService()
+        configure_logging(self.config_service.config.ui.log_level)
         self.use_fake_data = use_fake_data
         self.mesh_service: MeshCoreService | None = None
         self.data_store: ChatDataStore | None = None
@@ -108,8 +114,6 @@ class MeshCoreTuiApp(App):
             return
         self._backend_task = asyncio.create_task(self._initialize_backend())
 
-    async def on_mount(self) -> None:
-        await self.switch_mode(self.DEFAULT_MODE)
 
     async def action_quit(self) -> None:
         self.log("Quit requested; stopping MeshCore service.")
@@ -248,17 +252,18 @@ class MeshCoreTuiApp(App):
         service = self.mesh_service
         if not service:
             return
+        exc_ref: Exception | None = None
         try:
             await service.start()
         except Exception as exc:  # pragma: no cover - requires device
             self.log(f"MeshCore connection failed: {exc}")
+            exc_ref = exc
+
+        if exc_ref:
+            message = f"MeshCore connection failed: {exc_ref}"
 
             def _notify() -> None:
-                self.notify(
-                    f"MeshCore connection failed: {exc}",
-                    severity="error",
-                    timeout=10,
-                )
+                self.notify(message, severity="error", timeout=10)
 
             self.call_after_refresh(_notify)
 

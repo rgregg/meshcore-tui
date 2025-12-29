@@ -55,13 +55,17 @@ class ChannelListViewItem(ListItem):
     def __init__(self, item: BaseContainerItem):
         super().__init__()
         self.item = item
-        self._label = Label(item.display_text)
+        self._label = Label("", classes="ChannelLabel")
+        self.refresh_title()
 
     def compose(self) -> ComposeResult:
         yield self._label
 
     def refresh_title(self) -> None:
-        self._label.update(self.item.display_text)
+        text = Text(self.item.display_text)
+        if getattr(self.item, "unread_count", 0) > 0:
+            text.stylize("bold")
+        self._label.update(text)
 
 class MessageListViewItem(ListItem):
     """Reusable list item that can refresh its content for different messages."""
@@ -193,6 +197,7 @@ class BaseChatScreen(Screen):
         if self.selected_container == channel:
             return
         self.selected_container = channel
+        self._clear_unread(channel)
 
         # Update the title box
         label = self.query_one("#RightPaneTitle")
@@ -274,27 +279,60 @@ class BaseChatScreen(Screen):
             self._pending_data_updates.append(event)
             return
 
+        self.log(
+            f"UI data update: type={event.update_type} container={getattr(event.container, 'name', getattr(event.container, 'display_name', 'unknown'))}"
+        )
         self._apply_data_update(event)
 
     def _apply_data_update(self, event: DataUpdate) -> None:
         if event.update_type == "update" and event.item is None:
-            for child in self.container_listview.children:
-                if getattr(child, "item", None) == event.container and hasattr(child, "refresh_title"):
-                    child.refresh_title()
+            self._refresh_container_label(event.container)
             return
 
         if event.update_type == "add" and event.item is None:
             # New channel/chat container
             new_channel = ChannelListViewItem(event.container)
             self.container_listview.append(new_channel)
+            new_channel.refresh_title()
             if self.selected_container is None:
                 self._focus_container(event.container)
                 asyncio.create_task(self.action_select_channel(event.container.name))
             return
 
-        if event.container == self.selected_container and event.update_type == "add" and event.item:
-            self._append_message_with_divider(event.item)
-            self._scroll_messages_to_end()
+        if event.update_type == "add" and event.item:
+            if event.container == self.selected_container:
+                self._append_message_with_divider(event.item)
+                self._scroll_messages_to_end()
+                self._clear_unread(event.container)
+            else:
+                self._increment_unread(event.container)
+            return
+
+    def _refresh_container_label(self, container: BaseContainerItem) -> None:
+        for child in self.container_listview.children:
+            if getattr(child, "item", None) == container and hasattr(child, "refresh_title"):
+                child.refresh_title()
+                break
+
+    def _increment_unread(self, container: BaseContainerItem) -> None:
+        counter = getattr(container, "unread_count", None)
+        if counter is None:
+            return
+        if hasattr(container, "increment_unread"):
+            container.increment_unread()
+        else:
+            container.unread_count += 1
+        self._refresh_container_label(container)
+
+    def _clear_unread(self, container: BaseContainerItem) -> None:
+        counter = getattr(container, "unread_count", None)
+        if not counter:
+            return
+        if hasattr(container, "clear_unread"):
+            container.clear_unread()
+        else:
+            container.unread_count = 0
+        self._refresh_container_label(container)
 
     def _focus_container(self, container: BaseContainerItem) -> None:
         """Move the left list selection to the provided container if it exists."""
@@ -403,7 +441,7 @@ class BaseChatScreen(Screen):
         if not sender_name:
             self._notify_error("Message has no sender info to reply to.")
             return
-        mention = f"@{sender_name}"
+        mention = f"@[{sender_name}] "
         input_box = self.query_one("#InputTextBox", Input)
         existing = input_box.value or ""
         if existing.startswith(mention):

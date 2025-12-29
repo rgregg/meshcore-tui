@@ -218,6 +218,7 @@ class ChatDataStore:
         if isinstance(container, MeshCoreChannel):
             self._maybe_assign_default_channel_index(container)
             self._channels.append(container)
+            self._channels.sort(key=lambda ch: (ch.index is None, ch.index, ch.name.lower()))
         elif isinstance(container, MeshCoreNode):
             self._contacts.append(container)
         key = self._container_key(container)

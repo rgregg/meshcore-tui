@@ -2,9 +2,10 @@
 version: 1
 meshcore:
   companion:
-    transport: "bluetooth"
-    endpoint: "meshcore-dev.local"
-    device: "auto"
+    transport: bluetooth              # bluetooth | serial | tcp
+    endpoint: meshcore-dev.local      # for TCP connections
+    device: auto                      # auto for serial or /dev/tty0, MAC address for bluetooth
+  log_packets: false
 ui:
   theme: "meshcore-dark"
   log_level: "info"

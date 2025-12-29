@@ -38,6 +38,7 @@ class CompanionConnectionConfig:
 @dataclass
 class MeshcoreConfig:
     companion: CompanionConnectionConfig = field(default_factory=CompanionConnectionConfig)
+    log_packets: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "MeshcoreConfig":
@@ -45,6 +46,7 @@ class MeshcoreConfig:
             return cls()
         return cls(
             companion=CompanionConnectionConfig.from_dict(data.get("companion")),
+            log_packets=data.get("log_packets", False),
         )
 
 

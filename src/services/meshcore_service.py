@@ -92,6 +92,7 @@ class MeshCoreService:
         self._radio_worker: asyncio.Task[None] | None = None
         self._ack_trackers: Dict[str, AckTracker] = {}
         self._last_ack_code: str | None = None
+        self._log_packets_enabled = bool(self.config.log_packets)
 
     @property
     def config(self) -> MeshcoreConfig:
@@ -134,6 +135,7 @@ class MeshCoreService:
             logger.exception("Failed to initialize MeshCore", exc_info=exc)
             self._running = False
             await self._stop_radio_worker()
+            await self._force_bluetooth_disconnect()
             raise
 
     async def stop(self) -> None:
@@ -144,6 +146,25 @@ class MeshCoreService:
         await self._meshcore.stop_auto_message_fetching()
         await self._meshcore.connection_manager.disconnect()
         self._set_status("Disconnected", state="disconnected")
+
+    async def _force_bluetooth_disconnect(self) -> None:
+        transport = self.config.companion.transport.lower()
+        if transport != "bluetooth":
+            return
+        address = self.config.companion.device
+        if not address:
+            return
+        try:
+            from services.bluetooth_helper import disconnect_bluetooth_device
+        except Exception as exc:  # pragma: no cover - import issues
+            logger.debug("Bluetooth helper unavailable: %s", exc)
+            return
+        try:
+            success = await disconnect_bluetooth_device(address)
+            if success:
+                logger.info("Forced bluetooth disconnect for %s after failure", address)
+        except Exception as exc:  # pragma: no cover - dbus issues
+            logger.debug("Bluetooth disconnect helper raised: %s", exc)
 
     def add_contact_listener(self, listener: Listener) -> None:
         self._contact_listeners.append(listener)
@@ -177,6 +198,7 @@ class MeshCoreService:
                 self._contacts_ready.clear()
                 lastmod = self._last_contacts_lastmod
                 event = await meshcore.commands.get_contacts(lastmod=lastmod, timeout=30)
+                self._log_packet_event(event)
                 if event and event.type == EventType.CONTACTS:
                     self._last_contacts_lastmod = event.payload.get("last_mod", lastmod)
                     self._contacts_ready.set()
@@ -204,6 +226,7 @@ class MeshCoreService:
             self._set_status("Refreshing channels…", 0, 0, state="refreshing_channels")
             try:
                 info_event = await meshcore.commands.send_device_query()
+                self._log_packet_event(info_event)
             except Exception as exc:  # pragma: no cover - hardware specific
                 logger.warning("MeshCore device query failed: %s", exc)
                 if set_idle_status:
@@ -220,6 +243,7 @@ class MeshCoreService:
             for idx in range(max_channels):
                 try:
                     event = await meshcore.commands.get_channel(idx)
+                    self._log_packet_event(event)
                 except Exception as exc:  # pragma: no cover - hardware specific
                     logger.warning("Failed to fetch channel %s: %s", idx, exc)
                     break
@@ -305,7 +329,13 @@ class MeshCoreService:
         meshcore.subscribe(EventType.SELF_INFO, self._handle_self_info)
         meshcore.subscribe(EventType.ACK, self._handle_ack)
 
+    def _log_packet_event(self, event: Event | None) -> None:
+        if not self._log_packets_enabled or not event:
+            return
+        logger.info("Mesh packet %s: %s", event.type, event.payload)
+
     async def _handle_contacts(self, event: Event) -> None:
+        self._log_packet_event(event)
         contacts = {}
         for public_key, payload in event.payload.items():
             display_name = payload.get("adv_name") or public_key[:8]
@@ -320,6 +350,7 @@ class MeshCoreService:
         self._contacts_ready.set()
 
     async def _handle_new_contact(self, event: Event) -> None:
+        self._log_packet_event(event)
         payload = event.payload
         public_key = payload.get("public_key")
         if not public_key:
@@ -335,6 +366,7 @@ class MeshCoreService:
         self._contacts_ready.set()
 
     async def _handle_contact_message(self, event: Event) -> None:
+        self._log_packet_event(event)
         prefix = event.payload.get("pubkey_prefix", "")
         contact = self._find_contact_by_prefix(prefix)
         logger.info(
@@ -353,6 +385,8 @@ class MeshCoreService:
         await self._notify(self._contact_message_listeners, data)
 
     async def _handle_channel_message(self, event: Event) -> None:
+        self._log_packet_event(event)
+        logger.debug("Channel message event received from MeshCore: %s", event.payload)
         idx = event.payload.get("channel_idx")
         channel = self._channels.get(idx)
         prefix = event.payload.get("pubkey_prefix", "")
@@ -368,8 +402,6 @@ class MeshCoreService:
             prefix,
             event.payload.get("text", ""),
         )
-        logger.info("Channel message event: %s", event)
-        logger.info("Channel message payload: %s", event.payload)
         data = {
             "channel": channel,
             "text": event.payload.get("text", ""),
@@ -380,6 +412,7 @@ class MeshCoreService:
         await self._notify(self._channel_message_listeners, data)
 
     async def _handle_self_info(self, event: Event) -> None:
+        self._log_packet_event(event)
         payload = event.payload or {}
         info = MeshCoreSelfInfo(
             display_name=(payload.get("name", "") or "").strip() or "MeshCore Operator",
@@ -398,6 +431,7 @@ class MeshCoreService:
         await self._notify(self._self_listeners, info)
 
     async def _handle_ack(self, event: Event) -> None:
+        self._log_packet_event(event)
         payload = event.payload or {}
         code = payload.get("code") or (event.attributes or {}).get("code")
         if not code:

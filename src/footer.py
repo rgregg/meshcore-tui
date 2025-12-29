@@ -27,9 +27,11 @@ class ConnectionStatusFooter(Footer):
 
     def on_mount(self) -> None:
         super().on_mount()
+        self._apply_cached_text()
         self._status_timer = self.set_interval(1.0, self._on_status_timer)
         logger.debug("ConnectionStatusFooter mounted; starting status updates.")
         self._update_status()
+        self._apply_cached_text()
 
     def on_unmount(self) -> None:
         if self._status_timer:
@@ -71,12 +73,26 @@ class ConnectionStatusFooter(Footer):
         if self._last_status_text != text:
             logger.debug("Footer status update: %s", text)
             self._last_status_text = text
+            setattr(app, "_footer_status_cache", text)
         widget.update(text)
         widget.remove_class("-connected")
         widget.remove_class("-connecting")
         widget.remove_class("-error")
         for cls in classes:
             widget.add_class(cls)
+
+    def _apply_cached_text(self) -> None:
+        widget = None
+        try:
+            widget = self.query_one(f"#{self._status_id}", Label)
+        except NoMatches:
+            return
+        app = getattr(self, "app", None)
+        if app is None:
+            return
+        cached = getattr(app, "_footer_status_cache", None)
+        if cached:
+            widget.update(cached)
 
     def _class_for_state(self, state: str, connected: bool) -> str:
         if state == "connected" or connected:
