@@ -1,0 +1,47 @@
+SettingsScreen {
+    height: 1fr;
+}
+
+#SettingsLayout {
+    width: 100%;
+    height: 1fr;
+}
+
+#SettingsNav {
+    width: 28%;
+    border-right: panel $secondary;
+    padding: 1 1 1 1;
+    row-gap: 1;
+}
+
+#SettingsNavList {
+    height: 1fr;
+}
+
+#SettingsForm {
+    width: 72%;
+    padding: 1 2;
+}
+
+.SettingsTab {
+    row-gap: 1;
+}
+
+.SettingsNavTitle {
+    text-style: bold;
+    padding-bottom: 1;
+}
+
+.section-label {
+    text-style: bold;
+    margin-top: 1;
+}
+
+.field-label {
+    color: $text-muted;
+    margin-top: 1;
+}
+
+.spaced-input {
+    margin-bottom: 1;
+}

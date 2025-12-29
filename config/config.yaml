@@ -2,8 +2,9 @@ version: 1
 meshcore:
   companion:
     transport: bluetooth
-    endpoint: meshcore-dev.local
-    device: 9C:13:9E:A1:3A:F5
+    # endpoint: meshcore-dev.local    # for TCP connections
+    device: 9C:13:9E:A1:3A:F5         # MAC address for bluetooth or /dev/tty for serial
+  log_packets: false
 ui:
   theme: meshcore-dark
-  log_level: info
+  log_level: debug

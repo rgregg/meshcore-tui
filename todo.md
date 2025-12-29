@@ -8,25 +8,46 @@
   - [x] Download known users / nodes from the radio
   - [x] Trigger an initial sync of pending contact/channel messages (MeshCore `get_msg` loop) so history shows up after connecting
   - [x] Connect with channels and chats, download messages from the radio (and cache them) and display them in the UI
-  - [ ] Send messages to channels and users (verify ACK handling and retries for mesh hops)
   - [x] Persist contact/channel/message metadata locally for offline mode and faster reloads
-- [ ] Public channel readiness
+- [x] Public channel readiness
   - [x] Indicate MeshCore connection status in the footer so it’s obvious when the radio is reachable
   - [x] Auto-select and focus the first available channel (default `public`) when live data arrives so messages can be sent without extra clicks
   - [x] Show sender metadata for channel posts (map contact prefix to display name) instead of attributing everything to the current user
   - [x] Provide an error toast when sending to a channel fails (e.g., channel not provisioned or radio offline)
-- [ ] Add message-level UX
+- [x] Add message-level UX
   - [x] Reply to a selected message with `ctrl+r`, pre-populating `@[sender]` in the input box
   - [x] Expand the `ctrl+i` message inspector to surface timestamp, path, repeater hops, and duplicate counts
   - [x] Insert date/time dividers when gaps between messages exceed 15 minutes
 - [ ] Channel creation UX
-  - [ ] Allow adding hashtag channels with auto-generated secrets
-  - [ ] Allow adding private channels with user-provided keys
+  - [ ] Add hashtag channels with auto-generated secrets
+  - [ ] Add private channels with user-provided keys or auto-generated key
 - [ ] Contact management actions
   - [ ] Add a contact from a public key or advertisement (prompt for nickname + trust state)
-  - [ ] View and edit contact details (display name, notes, priority routes)
+  - [ ] View contact details
+  - [ ] Update editable fields on a contact
   - [ ] Remove/block contacts and propagate the action to the radio with confirmation dialogs
   - [ ] Surface contact-level actions (ping, share location, request telemetry) via shortcuts or context menu
-- [ ] Replace JSON persistence with SQLite (or similar) for channels/contacts/messages to support indexing, migrations, and safe concurrent writes
+  - [ ] Reset path for Contact
+  - [ ] Share contact (command in the pallet)
+  - [ ] Import contact (command in the pallet)
+- [x] Replace JSON persistence with SQLite (or similar) for channels/contacts/messages to support indexing, migrations, and safe concurrent writes
 - [ ] Refactor classes into files in a more idomatic way
 - [ ] Package as a python module and enable easy installation via pipx
+- [ ] Enable login / logout from a repeater / room server for remote management
+- [ ] Display when adverts are received from other devices as potential contacts
+- [ ] Add configuration settings for the device
+  - [ ] Set username on the radio
+  - [ ] Set coordinates of radio
+  - [ ] Set transmission power
+  - [ ] Change device PIN
+  - [ ] Set radio parameters - freq, bandwidth, spread factor, coding rate
+  - [ ] Choose radio parameters from the known list of parameters
+  - [ ] Configure location advertisement policy
+  - [ ] Configure automatic advert policy
+  - [ ] Synchronize time from local machine to radio
+  - [ ] Set manual or automatic contact adding
+  - [ ] export and import private key
+- [ ] Settings page to display device information
+  - [ ] show core statistics (voltage, uptime, errors, queue length) from get_stats_core()
+  - [ ] show radio statistics from get_stats_radio()
+  - [ ] show packet statistics from get_stats_packets()

@@ -2,8 +2,13 @@
 
 MeshCore-TUI is a terminal UI interface for working with a MeshCore companion node.
 
-Using the MeshCore-TUI you can easily chat with channels and other individual nodes on the
-MeshCore network.
+**This project is still a work in progress and under active development**.
+
+Using the MeshCore-TUI you can easily chat with channels and other individual nodes on the MeshCore network.
+
+
+![Screenshot of the channels interface](media/app-channels.png)
+
 
 To get started:
 

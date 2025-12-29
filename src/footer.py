@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import logging
 
+import time
+
 from textual.app import ComposeResult
 from textual.widgets import Footer, Static, Label
 from textual.css.query import NoMatches
@@ -16,7 +18,7 @@ class ConnectionStatusFooter(Footer):
 
     def __init__(self, *, status_id: str | None = None, **kwargs) -> None:
         super().__init__(**kwargs)
-        self._status_id = status_id or f"statusBarLabel_{id(self)}"
+        self._status_id = status_id or f"statusBarLabel_{int(time.time() * 1000)}_{id(self)}"
         self._last_status_text: str | None = None
         self._status_timer: Timer | None = None
         self._missing_logged = False

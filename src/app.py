@@ -100,12 +100,6 @@ class MeshCoreTuiApp(App):
             "Chats",
             tooltip="Show the chat screen (global)"
         ),
-        Binding(
-            "s",
-            "app.switch_mode('settings')",
-            "Settings",
-            tooltip="Configure the app settings"
-        ),
     ]
 
     async def on_load(self, event: events.Load) -> None:
@@ -168,6 +162,13 @@ class MeshCoreTuiApp(App):
                 self._command_send_advert_flood,
             )
         )
+        commands.append(
+            SystemCommand(
+                "Open Settings",
+                "Show application settings",
+                self._command_open_settings,
+            )
+        )
         return commands
 
     async def _command_refresh_channels(self) -> None:
@@ -224,6 +225,9 @@ class MeshCoreTuiApp(App):
         else:
             message = "Flood advert sent." if flood else "Advert sent."
             self.notify(message, title="MeshCore", severity="information")
+
+    async def _command_open_settings(self) -> None:
+        await self.switch_mode("settings")
 
     async def _initialize_backend(self) -> None:
         try:

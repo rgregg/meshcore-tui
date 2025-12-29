@@ -129,7 +129,6 @@ class BaseChatScreen(Screen):
     NAV_BINDINGS = [
         Binding("1", "open_channels", "Channels"),
         Binding("2", "open_chats", "Chats"),
-        Binding("s", "open_settings", "Settings"),
     ]
     BINDINGS = NAV_BINDINGS + [
         Binding("i", "show_message_info", "Message info"),
