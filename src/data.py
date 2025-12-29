@@ -3,9 +3,11 @@ from datetime import datetime, timezone
 import asyncio
 import uuid
 import logging
-from typing import Any, Literal
+from typing import Literal, TYPE_CHECKING
 
-from services.meshcore_service import MeshCoreService, MeshCoreChannelInfo, MeshCoreContactInfo
+from services.meshcore_service import MeshCoreService
+if TYPE_CHECKING:
+    from services.data_store import ChatDataStore
 
 logger = logging.getLogger(__name__)
 
@@ -213,40 +215,37 @@ class DataUpdate:
         
 
 class MeshCoreChatProvider(BaseDataProvider):
-    """Bridges MeshCoreService data into TUI providers."""
+    """Provides chat/channel data backed by ChatDataStore and MeshCore service."""
 
     def __init__(
         self,
         on_update,
         service: MeshCoreService,
+        store: "ChatDataStore",
         mode: Literal["channels", "users"],
     ):
         super().__init__(on_update)
         self._service = service
+        self._store = store
         self._mode = mode
-        self._channel_map: dict[int, MeshCoreChannel] = {}
-        self._user_map: dict[str, MeshCoreNode] = {}
-        self.__messages: dict[BaseContainerItem, list[BaseMessage]] = {}
-        user_cfg = service.config.user
-        self.current_user = MeshCoreNode(user_cfg.display_name, public_key=user_cfg.node_id)
-        if mode == "channels":
-            service.add_channel_listener(self._handle_channels)
-            service.add_channel_message_listener(self._handle_channel_message)
-        else:
-            service.add_contact_listener(self._handle_contacts)
-            service.add_contact_message_listener(self._handle_contact_message)
+        self._store_listener = self._handle_store_update
+        self._store.add_listener(self._store_listener)
 
     def get_channels(self):
-        return list(self._channel_map.values())
+        return self._store.get_channels()
 
     def get_messages_for_channel(self, channel):
-        return self.__messages.get(channel, list[ChannelMessage]())
+        return self._store.get_messages_for_channel(channel)
 
     def get_users(self):
-        return list(self._user_map.values())
+        return self._store.get_users()
 
     def get_messages_for_user(self, user):
-        return self.__messages.get(user, list[UserMessage]())
+        return self._store.get_messages_for_user(user)
+
+    @property
+    def current_user(self) -> MeshCoreNode:
+        return self._store.current_user
 
     def send_message(self, message: BaseMessage) -> bool:
         if isinstance(message, ChannelMessage):
@@ -257,11 +256,10 @@ class MeshCoreChatProvider(BaseDataProvider):
                 logger.error("Cannot send channel message; MeshCore is not connected")
                 return False
             logger.info("Sending channel message to %s: %s", message.channel.name, message.text)
+            self._store.append_message(message.channel, message)
             asyncio.create_task(
                 self._service.send_channel_message(message.channel.index, message.text)
             )
-            self.__messages.setdefault(message.channel, []).append(message)
-            self._on_update(DataUpdate("add", message.channel, message))
             return True
         if isinstance(message, UserMessage):
             if not message.receiver.public_key:
@@ -270,96 +268,19 @@ class MeshCoreChatProvider(BaseDataProvider):
             if not self._service.is_connected:
                 logger.error("Cannot send user message; MeshCore is not connected")
                 return False
+            self._store.append_message(message.receiver, message)
             asyncio.create_task(
                 self._service.send_direct_message(message.receiver.public_key, message.text)
             )
-            self.__messages.setdefault(message.receiver, []).append(message)
-            self._on_update(DataUpdate("add", message.receiver, message))
             return True
         return False
 
     def remove_container(self, container: BaseContainerItem):
         raise NotImplementedError("Removing MeshCore contacts is not supported yet")
 
-    def _handle_channels(self, channels: list[MeshCoreChannelInfo]) -> None:
-        if self._mode != "channels":
-            return
-        for info in channels:
-            channel = self._channel_map.get(info.index)
-            if not channel:
-                channel = MeshCoreChannel(info.name, index=info.index)
-                self._channel_map[info.index] = channel
-                self.__messages.setdefault(channel, [])
-                self._on_update(DataUpdate("add", channel, None))
-            else:
-                channel.name = info.name
-
-    def _handle_contacts(self, contacts: list[MeshCoreContactInfo]) -> None:
-        if self._mode != "users":
-            return
-        for info in contacts:
-            node = self._user_map.get(info.public_key)
-            if not node:
-                node = MeshCoreNode(info.display_name, public_key=info.public_key)
-                self._user_map[info.public_key] = node
-                self.__messages.setdefault(node, [])
-                self._on_update(DataUpdate("add", node, None))
-            else:
-                node.name = info.display_name
-
-    def _handle_channel_message(self, payload: dict[str, Any]) -> None:
-        if self._mode != "channels":
-            return
-        channel = payload.get("channel")
-        text = payload.get("text", "")
-        if not isinstance(channel, MeshCoreChannelInfo):
-            return
-        container = self._channel_map.get(channel.index)
-        if not container:
-            container = MeshCoreChannel(channel.name, index=channel.index)
-            self._channel_map[channel.index] = container
-            self.__messages.setdefault(container, [])
-            self._on_update(DataUpdate("add", container, None))
-        contact = payload.get("contact")
-        prefix = payload.get("sender_prefix")
-        if isinstance(contact, MeshCoreContactInfo):
-            sender = MeshCoreNode(contact.display_name, public_key=contact.public_key)
-        elif isinstance(prefix, str) and prefix:
-            sender = MeshCoreNode(prefix, public_key=prefix)
-        else:
-            sender = MeshCoreNode("Unknown sender")
-        message = ChannelMessage(
-            container,
-            text,
-            datetime.fromtimestamp(
-                payload.get("timestamp", datetime.now(timezone.utc).timestamp()),
-                tz=timezone.utc,
-            ),
-            sender,
-        )
-        self.__messages.setdefault(container, []).append(message)
-        self._on_update(DataUpdate("add", container, message))
-
-    def _handle_contact_message(self, payload: dict[str, Any]) -> None:
-        if self._mode != "users":
-            return
-        contact = payload.get("contact")
-        if not isinstance(contact, MeshCoreContactInfo):
-            return
-        node = self._user_map.get(contact.public_key)
-        if not node:
-            node = MeshCoreNode(contact.display_name, public_key=contact.public_key)
-            self._user_map[contact.public_key] = node
-            self.__messages.setdefault(node, [])
-            self._on_update(DataUpdate("add", node, None))
-        message = UserMessage(
-            payload.get("text", ""),
-            datetime.fromtimestamp(
-                payload.get("timestamp", datetime.now(timezone.utc).timestamp()),
-                tz=timezone.utc,
-            ),
-            MeshCoreNode(contact.display_name, public_key=contact.public_key),
-            self.current_user,
-        )
-        self.__messages.setdefault(node, []).append(message)
-        self._on_update(DataUpdate("add", node, message))
+    def _handle_store_update(self, update: DataUpdate) -> None:
+        container = update.container
+        if self._mode == "channels" and isinstance(container, MeshCoreChannel):
+            self._on_update(update)
+        elif self._mode == "users" and isinstance(container, MeshCoreNode):
+            self._on_update(update)

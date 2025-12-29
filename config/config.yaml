@@ -1,13 +1,9 @@
 version: 1
 meshcore:
-  user:
-    display_name: MeshCoreUser1234
-    node_id: mesh-operator
   companion:
     transport: bluetooth
     endpoint: meshcore-dev.local
-    device: auto
-    channel_refresh_seconds: 301
+    device: 9C:13:9E:A1:3A:F5
 ui:
   theme: meshcore-dark
   log_level: info

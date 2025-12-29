@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import asyncio
+from datetime import datetime, timedelta
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import ScrollableContainer, VerticalScroll, Horizontal, HorizontalScroll, Vertical
@@ -33,8 +34,19 @@ class ChannelListViewItem(ListItem):
 class MessageListViewItem(ListItem):
     message: BaseMessage
     def __init__(self, message: BaseMessage):
-        super().__init__(Label(f"{message.sender}: {message.text}"))
+        sender = getattr(message, "sender", None)
+        sender_name = str(sender) if sender else ""
+        if not sender_name or sender_name.lower() == "unknown sender":
+            content = message.text
+        else:
+            content = f"{sender_name}: {message.text}"
+        super().__init__(Label(content))
         self.message = message
+
+class MessageDividerItem(ListItem):
+    def __init__(self, label: str):
+        super().__init__(Label(label, classes="MessageDivider"))
+        self.can_focus = False
 
 class BaseChatScreen(Screen):
     """Implements a Screen with a split view"""
@@ -45,12 +57,16 @@ class BaseChatScreen(Screen):
     _data_provider: BaseDataProvider | None = None
 
     CSS_PATH = "chat.tcss"
+    MESSAGE_GAP = timedelta(minutes=15)
     NAV_BINDINGS = [
         Binding("1", "open_channels", "Channels"),
         Binding("2", "open_chats", "Chats"),
         Binding("s", "open_settings", "Settings"),
     ]
-    BINDINGS = NAV_BINDINGS
+    BINDINGS = NAV_BINDINGS + [
+        Binding("ctrl+i", "show_message_info", "Message info"),
+        Binding("ctrl+r", "reply_message", "Reply"),
+    ]
 
     def __init__(self) -> None:
         super().__init__()
@@ -97,7 +113,7 @@ class BaseChatScreen(Screen):
             return
         channel = list_item.item
         self.log(f"Select LeftPane: {channel.name}")
-        await self.run_action("select_channel('" + channel.name + "')")
+        await self.action_select_channel(channel.name)
 
     async def action_select_channel(self, name: str) -> None:
         """Selects a new channel and updates the UI"""
@@ -120,7 +136,7 @@ class BaseChatScreen(Screen):
 
         self.set_loader_visible(True)
         self.message_items.clear()
-        await self.run_action(f"reload_channel_data('{name}')")
+        await self.action_reload_channel_data(name)
 
     @property
     def message_listview(self) -> ListView:
@@ -158,8 +174,9 @@ class BaseChatScreen(Screen):
         if channel is None:
             self.set_loader_visible(False)
             return
-        items = [MessageListViewItem(m) for m in self.get_data_container_items(channel)]
+        items = self._build_message_items(self.get_data_container_items(channel))
         listview.extend(items)
+        self._scroll_messages_to_end()
         self.set_loader_visible(False)
 
     async def on_input_submitted(self, event:Input.Submitted):
@@ -189,8 +206,8 @@ class BaseChatScreen(Screen):
             return
 
         if event.container == self.selected_container and event.update_type == "add" and event.item:
-            new_item = MessageListViewItem(event.item)
-            self.message_listview.append(new_item)
+            self._append_message_with_divider(event.item)
+            self._scroll_messages_to_end()
 
     def _focus_container(self, container: BaseContainerItem) -> None:
         """Move the left list selection to the provided container if it exists."""
@@ -234,6 +251,101 @@ class BaseChatScreen(Screen):
         else:
             self.log(message)
 
+    def _build_message_items(self, messages: list[BaseMessage]) -> list[ListItem]:
+        items: list[ListItem] = []
+        prev_ts: datetime | None = None
+        for message in messages:
+            ts = getattr(message, "timestamp", None)
+            if (
+                prev_ts
+                and ts
+                and ts - prev_ts > self.MESSAGE_GAP
+            ):
+                items.append(MessageDividerItem(self._format_divider_label(ts)))
+            items.append(MessageListViewItem(message))
+            if ts:
+                prev_ts = ts
+        return items
+
+    def _append_message_with_divider(self, message: BaseMessage) -> None:
+        listview = self.message_listview
+        prev_ts = self._last_message_timestamp()
+        ts = getattr(message, "timestamp", None)
+        if prev_ts and ts and ts - prev_ts > self.MESSAGE_GAP:
+            listview.append(MessageDividerItem(self._format_divider_label(ts)))
+        listview.append(MessageListViewItem(message))
+
+    def action_show_message_info(self) -> None:
+        message = self._selected_message()
+        if not message:
+            self._notify_error("Unable to read message details.")
+            return
+        sender = getattr(message, "sender", None)
+        receiver = getattr(message, "receiver", None)
+        channel = getattr(message, "channel", None)
+        lines = [
+            f"Text: {message.text}",
+            f"Timestamp: {message.timestamp.isoformat() if message.timestamp else 'unknown'}",
+        ]
+        if sender:
+            lines.append(f"Sender: {sender.name} ({getattr(sender, 'public_key', 'n/a')})")
+        if receiver:
+            lines.append(f"Receiver: {receiver.name} ({getattr(receiver, 'public_key', 'n/a')})")
+        if channel:
+            lines.append(f"Channel: {channel.name} (idx={channel.index})")
+        hops = getattr(message, "path_hops", None)
+        if hops is not None:
+            lines.append(f"Path hops: {hops}")
+        repeats = getattr(message, "repeat_count", None)
+        if repeats:
+            lines.append(f"Repeats heard: {repeats}")
+        app = getattr(self, "app", None)
+        if app:
+            app.notify("\n".join(lines), title="Message info", severity="information", timeout=10)
+        else:
+            self.log("\n".join(lines))
+
+    def action_reply_message(self) -> None:
+        message = self._selected_message()
+        if not message:
+            self._notify_error("Select a message to reply to.")
+            return
+        sender = getattr(message, "sender", None)
+        sender_name = getattr(sender, "name", None)
+        if not sender_name:
+            self._notify_error("Message has no sender info to reply to.")
+            return
+        mention = f"@{sender_name}"
+        input_box = self.query_one("#InputTextBox", Input)
+        existing = input_box.value or ""
+        if existing.startswith(mention):
+            input_box.cursor_position = len(input_box.value)
+            input_box.focus()
+            return
+        if existing:
+            input_box.value = f"{mention} {existing}"
+        else:
+            input_box.value = f"{mention} "
+        input_box.cursor_position = len(input_box.value)
+        input_box.focus()
+
+    def _scroll_messages_to_end(self) -> None:
+        listview = self.message_listview
+        try:
+            listview.scroll_end(animate=False)
+        except Exception:
+            # scroll_end may not exist on older Textual; fall back to forcing last index
+            if listview.children:
+                listview.index = len(listview.children) - 1
+
+    def _last_message_timestamp(self) -> datetime | None:
+        listview = self.message_listview
+        for child in reversed(listview.children):
+            message = getattr(child, "message", None)
+            if message and getattr(message, "timestamp", None):
+                return message.timestamp
+        return None
+
     def action_open_channels(self) -> None:
         self.app.switch_mode("channel")
 
@@ -242,6 +354,19 @@ class BaseChatScreen(Screen):
 
     def action_open_settings(self) -> None:
         self.app.switch_mode("settings")
+
+    def _selected_message(self) -> BaseMessage | None:
+        listview = self.message_listview
+        if not listview.children:
+            return None
+        idx = getattr(listview, "index", -1)
+        if idx is None or idx < 0 or idx >= len(listview.children):
+            return None
+        child = listview.children[idx]
+        return getattr(child, "message", None)
+
+    def _format_divider_label(self, timestamp: datetime) -> str:
+        return timestamp.strftime("%Y-%m-%d %H:%M")
 
 
 class ChannelChatScreen(BaseChatScreen):
@@ -292,9 +417,10 @@ class ChannelChatScreen(BaseChatScreen):
         if getattr(self.app, "use_fake_data", False):
             return super().create_data_provider()
         service = getattr(self.app, "mesh_service", None)
-        if not service:
-            raise RuntimeError("MeshCore service unavailable for channel provider")
-        return MeshCoreChatProvider(self.on_data_update, service, "channels")
+        store = getattr(self.app, "data_store", None)
+        if not service or not store:
+            raise RuntimeError("MeshCore service or data store unavailable for channel provider")
+        return MeshCoreChatProvider(self.on_data_update, service, store, "channels")
         
 
 class UserChatScreen(BaseChatScreen):
@@ -333,6 +459,7 @@ class UserChatScreen(BaseChatScreen):
         if getattr(self.app, "use_fake_data", False):
             return super().create_data_provider()
         service = getattr(self.app, "mesh_service", None)
-        if not service:
-            raise RuntimeError("MeshCore service unavailable for chat provider")
-        return MeshCoreChatProvider(self.on_data_update, service, "users")
+        store = getattr(self.app, "data_store", None)
+        if not service or not store:
+            raise RuntimeError("MeshCore service or data store unavailable for chat provider")
+        return MeshCoreChatProvider(self.on_data_update, service, store, "users")

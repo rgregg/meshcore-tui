@@ -23,9 +23,6 @@ class ConfigServiceTests(unittest.TestCase):
                 """
                 version: 1
                 meshcore:
-                  user:
-                    display_name: Example Operator
-                    node_id: example-node
                   companion:
                     transport: bluetooth
                     endpoint: example.local
@@ -47,17 +44,16 @@ class ConfigServiceTests(unittest.TestCase):
     def test_loads_from_example_when_config_missing(self) -> None:
         service = self._service()
         self.assertTrue(self.config_path.exists())
-        self.assertEqual(service.config.meshcore.user.display_name, "Example Operator")
         self.assertEqual(service.config.meshcore.companion.channel_refresh_seconds, 45)
 
     def test_save_persists_changes(self) -> None:
         service = self._service()
-        new_value = "Updated Operator"
-        service.config.meshcore.user.display_name = new_value
+        new_value = "tcp"
+        service.config.meshcore.companion.transport = new_value
         service.save()
 
         reloaded = self._service()
-        self.assertEqual(reloaded.config.meshcore.user.display_name, new_value)
+        self.assertEqual(reloaded.config.meshcore.companion.transport, new_value)
 
     def test_mutate_helper_updates_and_saves(self) -> None:
         service = self._service()

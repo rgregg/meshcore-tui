@@ -17,6 +17,7 @@ from settings import SettingsScreen
 from chat import ChannelChatScreen, UserChatScreen
 from services.config_service import ConfigService
 from services.meshcore_service import MeshCoreService
+from services.data_store import ChatDataStore, MeshCoreStoreBridge
 
 LOG_DIR = Path("logs")
 LOG_FILE = LOG_DIR / "meshcore-tui.log"
@@ -56,7 +57,13 @@ class MeshCoreTuiApp(App):
         super().__init__()
         self.config_service = ConfigService()
         self.use_fake_data = use_fake_data
-        self.mesh_service = None if use_fake_data else MeshCoreService(self.config_service)
+        self.mesh_service: MeshCoreService | None = None
+        self.data_store: ChatDataStore | None = None
+        self.store_bridge: MeshCoreStoreBridge | None = None
+        if not use_fake_data:
+            self.data_store = ChatDataStore()
+            self.mesh_service = MeshCoreService(self.config_service)
+            self.store_bridge = MeshCoreStoreBridge(self.mesh_service, self.data_store)
 
     MODES = {
         "settings": SettingsScreen,
@@ -73,10 +80,22 @@ class MeshCoreTuiApp(App):
             tooltip="Show the channels screen"
         ),
         Binding(
+            "ctrl+1",
+            "app.switch_mode('channel')",
+            "Channels",
+            tooltip="Show the channels screen (global)"
+        ),
+        Binding(
             "2",
             "app.switch_mode('chat')",
             "Chats",
             tooltip="Show the chat screen"
+        ),
+        Binding(
+            "ctrl+2",
+            "app.switch_mode('chat')",
+            "Chats",
+            tooltip="Show the chat screen (global)"
         ),
         Binding(
             "s",
@@ -129,6 +148,20 @@ class MeshCoreTuiApp(App):
                 self._command_reconnect_meshcore,
             )
         )
+        commands.append(
+            SystemCommand(
+                "Advertise Presence",
+                "Send an advert packet so nearby nodes learn about us",
+                self._command_send_advert,
+            )
+        )
+        commands.append(
+            SystemCommand(
+                "Advertise (Flood)",
+                "Flood adverts for quicker discovery at the cost of airtime",
+                self._command_send_advert_flood,
+            )
+        )
         return commands
 
     async def _command_refresh_channels(self) -> None:
@@ -163,6 +196,28 @@ class MeshCoreTuiApp(App):
             self.notify("MeshCore reconnected.", title="MeshCore", severity="information")
 
         asyncio.create_task(_reconnect())
+
+    async def _command_send_advert(self) -> None:
+        await self._send_advert(flood=False)
+
+    async def _command_send_advert_flood(self) -> None:
+        await self._send_advert(flood=True)
+
+    async def _send_advert(self, *, flood: bool) -> None:
+        service = getattr(self, "mesh_service", None)
+        if not service:
+            self.notify("MeshCore service unavailable.", severity="error")
+            return
+        if not service.is_connected:
+            self.notify("MeshCore not connected; cannot advertise.", severity="warning")
+            return
+        try:
+            await service.send_advert(flood=flood)
+        except Exception as exc:  # pragma: no cover - device specific
+            self.notify(f"Advert failed: {exc}", severity="error")
+        else:
+            message = "Flood advert sent." if flood else "Advert sent."
+            self.notify(message, title="MeshCore", severity="information")
 
 
 if __name__ == "__main__":

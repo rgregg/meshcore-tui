@@ -1,14 +1,10 @@
 # MeshCore-TUI configuration example. Copy to config.yaml and edit per companion node.
 version: 1
 meshcore:
-  user:
-    display_name: "MeshCore Operator"
-    node_id: "mesh-operator"
   companion:
     transport: "bluetooth"
     endpoint: "meshcore-dev.local"
     device: "auto"
-    channel_refresh_seconds: 30
 ui:
   theme: "meshcore-dark"
   log_level: "info"

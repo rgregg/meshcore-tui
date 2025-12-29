@@ -24,16 +24,6 @@ def _load_defaults(cls, data: dict[str, Any] | None) -> Any:
 
 
 @dataclass
-class MeshcoreUserConfig:
-    display_name: str = "MeshCore Operator"
-    node_id: str = "mesh-operator"
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any] | None) -> "MeshcoreUserConfig":
-        return _load_defaults(cls, data)
-
-
-@dataclass
 class CompanionConnectionConfig:
     transport: str = "bluetooth"
     endpoint: str = "meshcore-dev.local"
@@ -47,7 +37,6 @@ class CompanionConnectionConfig:
 
 @dataclass
 class MeshcoreConfig:
-    user: MeshcoreUserConfig = field(default_factory=MeshcoreUserConfig)
     companion: CompanionConnectionConfig = field(default_factory=CompanionConnectionConfig)
 
     @classmethod
@@ -55,7 +44,6 @@ class MeshcoreConfig:
         if data is None:
             return cls()
         return cls(
-            user=MeshcoreUserConfig.from_dict(data.get("user")),
             companion=CompanionConnectionConfig.from_dict(data.get("companion")),
         )
 

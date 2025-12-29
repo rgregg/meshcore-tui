@@ -67,18 +67,6 @@ class SettingsScreen(Screen):
         with Vertical(id="SettingsForm"):
             with Content():
                 yield Markdown("# MeshCore-TUI Settings")
-                yield Static("User profile", classes="section-label")
-                yield Static("Display name", classes="field-label")
-                yield SafeInput(
-                    id="DisplayNameInput",
-                    classes="spaced-input",
-                )
-                yield Static("Mesh node ID", classes="field-label")
-                yield SafeInput(
-                    id="NodeIdInput",
-                    classes="spaced-input",
-                )
-
                 yield Static("Companion connection", classes="section-label")
                 yield Static("Transport (bluetooth/usb)", classes="field-label")
                 yield SafeInput(
@@ -152,8 +140,6 @@ class SettingsScreen(Screen):
     def _sync_inputs_to_config(self) -> None:
         if not self._config:
             return
-        self._config.meshcore.user.display_name = self._clean_value("#DisplayNameInput")
-        self._config.meshcore.user.node_id = self._clean_value("#NodeIdInput")
         self._config.meshcore.companion.transport = self._clean_value("#TransportInput", fallback="bluetooth")
         self._config.meshcore.companion.endpoint = self._clean_value("#EndpointInput")
         self._config.meshcore.companion.device = self._clean_value("#DeviceInput", fallback="auto")
@@ -166,8 +152,6 @@ class SettingsScreen(Screen):
         self._config.ui.log_level = self._clean_value("#LogLevelInput", fallback="info")
 
     def _populate_form(self) -> None:
-        self.query_one("#DisplayNameInput", Input).value = self._config.meshcore.user.display_name
-        self.query_one("#NodeIdInput", Input).value = self._config.meshcore.user.node_id
         self.query_one("#TransportInput", Input).value = self._config.meshcore.companion.transport
         self.query_one("#EndpointInput", Input).value = self._config.meshcore.companion.endpoint
         self.query_one("#DeviceInput", Input).value = self._config.meshcore.companion.device

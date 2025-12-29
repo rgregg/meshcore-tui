@@ -13,10 +13,10 @@ To get started:
 
 ## Configuration
 
-MeshCore-TUI persists user profile, connection details, and UI preferences to `config/config.yaml`.
+MeshCore-TUI persists connection details and UI preferences to `config/config.yaml`. Your node’s name and public key are read directly from the connected MeshCore companion, so they no longer live in the config file.
 
 - Edit the values directly with your preferred editor or open the Settings screen (`s`) inside the app to change fields and press `Save changes`/`ctrl+s`.
-- The schema is defined in `services/config_service.py` with dataclasses for meshcore users, companions, and UI preferences.
+- The schema is defined in `services/config_service.py` with dataclasses for MeshCore companion settings and UI preferences.
 - An example file lives at `config/config.example.yaml`; keep this in sync whenever new fields are added so other agents can bootstrap quickly.
 
 Config changes are applied immediately after saving and will be reloaded the next time the TUI starts.
