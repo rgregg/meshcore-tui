@@ -32,16 +32,30 @@ class ChannelListViewItem(ListItem):
         self.item = item
 
 class MessageListViewItem(ListItem):
+    """Reusable list item that can refresh its content for different messages."""
+
     message: BaseMessage
+
     def __init__(self, message: BaseMessage):
+        super().__init__()
+        self.message = message
+        self._label = Label("")
+        self.update_message(message)
+
+    def compose(self) -> ComposeResult:
+        yield self._label
+
+    def update_message(self, message: BaseMessage) -> None:
+        """Refresh the rendered text to reflect the supplied message."""
+        self.message = message
+        self._label.update(self._format_message_text(message))
+
+    def _format_message_text(self, message: BaseMessage) -> str:
         sender = getattr(message, "sender", None)
         sender_name = str(sender) if sender else ""
         if not sender_name or sender_name.lower() == "unknown sender":
-            content = message.text
-        else:
-            content = f"{sender_name}: {message.text}"
-        super().__init__(Label(content))
-        self.message = message
+            return message.text
+        return f"{sender_name}: {message.text}"
 
 class MessageDividerItem(ListItem):
     def __init__(self, label: str):
@@ -72,6 +86,7 @@ class BaseChatScreen(Screen):
         super().__init__()
         self.selected_container = None
         self._pending_data_updates: list[DataUpdate] = []
+        self._message_widget_cache: dict[BaseMessage, MessageListViewItem] = {}
 
     def compose(self) -> ComposeResult:
         self.channel_items = [ChannelListViewItem(c) for c in self.get_data_containers()]
@@ -112,6 +127,8 @@ class BaseChatScreen(Screen):
         if not hasattr(list_item, 'item'):
             return
         channel = list_item.item
+        if channel == self.selected_container:
+            return
         self.log(f"Select LeftPane: {channel.name}")
         await self.action_select_channel(channel.name)
 
@@ -121,6 +138,8 @@ class BaseChatScreen(Screen):
         channel = self.get_data_container_by_name(name)
         if channel is None:
             self.log(f"Channel {name} was not found")
+            return
+        if self.selected_container == channel:
             return
         self.selected_container = channel
 
@@ -135,7 +154,6 @@ class BaseChatScreen(Screen):
         self._focus_container(channel)
 
         self.set_loader_visible(True)
-        self.message_items.clear()
         await self.action_reload_channel_data(name)
 
     @property
@@ -262,7 +280,7 @@ class BaseChatScreen(Screen):
                 and ts - prev_ts > self.MESSAGE_GAP
             ):
                 items.append(MessageDividerItem(self._format_divider_label(ts)))
-            items.append(MessageListViewItem(message))
+            items.append(self._get_message_widget(message))
             if ts:
                 prev_ts = ts
         return items
@@ -273,7 +291,7 @@ class BaseChatScreen(Screen):
         ts = getattr(message, "timestamp", None)
         if prev_ts and ts and ts - prev_ts > self.MESSAGE_GAP:
             listview.append(MessageDividerItem(self._format_divider_label(ts)))
-        listview.append(MessageListViewItem(message))
+        listview.append(self._get_message_widget(message))
 
     def action_show_message_info(self) -> None:
         message = self._selected_message()
@@ -367,6 +385,15 @@ class BaseChatScreen(Screen):
 
     def _format_divider_label(self, timestamp: datetime) -> str:
         return timestamp.strftime("%Y-%m-%d %H:%M")
+
+    def _get_message_widget(self, message: BaseMessage) -> MessageListViewItem:
+        widget = self._message_widget_cache.get(message)
+        if widget is None:
+            widget = MessageListViewItem(message)
+            self._message_widget_cache[message] = widget
+        else:
+            widget.update_message(message)
+        return widget
 
 
 class ChannelChatScreen(BaseChatScreen):
