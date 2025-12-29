@@ -30,4 +30,20 @@ class PromptDialog(ModalScreen[bool]):
         else:
             self.dismiss(False)
 
+
+class ShutdownDialog(ModalScreen[None]):
+    """Modal overlay shown while the app performs shutdown tasks."""
+
+    CSS_PATH = "shutdown.tcss"
+
+    def __init__(self, message: str = "MeshCore TUI is shutting down…") -> None:
+        super().__init__()
+        self.message = message
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="ShutdownPanel"):
+            yield Label(self.message, id="ShutdownMessage")
+            yield LoadingIndicator(id="ShutdownSpinner")
+            yield Label("Please wait while we close connections.", id="ShutdownHint")
+
     

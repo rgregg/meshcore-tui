@@ -5,16 +5,16 @@ import logging
 from pathlib import Path
 import argparse
 import sys
+import contextlib
 
-from textual import getters, work
+from textual import getters, work, events
 from textual.app import App, SystemCommand
 from textual.command import CommandPalette
 from textual.binding import Binding
-# from textual.containers import ScrollableContainer, VerticalScroll, Horizontal, HorizontalScroll
-# from textual.widgets import Input, Markdown, Static, Collapsible
-# from textual.screen import Screen
 from settings import SettingsScreen
 from chat import ChannelChatScreen, UserChatScreen
+from dialog import ShutdownDialog
+from loading import LoadingScreen
 from services.config_service import ConfigService
 from services.meshcore_service import MeshCoreService
 from services.data_store import ChatDataStore, MeshCoreStoreBridge
@@ -45,7 +45,6 @@ def configure_logging() -> None:
     meshcore_logger.propagate = True
     setattr(configure_logging, "_configured", True)  # type: ignore[attr-defined]
 
-
 configure_logging()
 
 class MeshCoreTuiApp(App):
@@ -60,18 +59,16 @@ class MeshCoreTuiApp(App):
         self.mesh_service: MeshCoreService | None = None
         self.data_store: ChatDataStore | None = None
         self.store_bridge: MeshCoreStoreBridge | None = None
-        if not use_fake_data:
-            self.data_store = ChatDataStore()
-            self.mesh_service = MeshCoreService(self.config_service)
-            self.store_bridge = MeshCoreStoreBridge(self.mesh_service, self.data_store)
+        self._backend_task: asyncio.Task | None = None
 
     MODES = {
         "settings": SettingsScreen,
         "chat": UserChatScreen,
         "channel": ChannelChatScreen,
+        "loading": LoadingScreen,
     }
 
-    DEFAULT_MODE = "settings"
+    DEFAULT_MODE = "loading"
     BINDINGS = [
         Binding(
             "1",
@@ -105,28 +102,33 @@ class MeshCoreTuiApp(App):
         ),
     ]
 
+    async def on_load(self, event: events.Load) -> None:
+        if self.use_fake_data:
+            self._schedule_chat_mode()
+            return
+        self._backend_task = asyncio.create_task(self._initialize_backend())
+
     async def on_mount(self) -> None:
-        if self.mesh_service:
-            async def _start_meshcore() -> None:
-                try:
-                    await self.mesh_service.start()
-                except Exception as exc:  # pragma: no cover - requires device
-                    self.log(f"MeshCore connection failed: {exc}")
-                    self.notify(f"MeshCore connection failed: {exc}", severity="error", timeout=10)
-
-            asyncio.create_task(_start_meshcore())
-
-        await self.switch_mode("chat")
+        await self.switch_mode(self.DEFAULT_MODE)
 
     async def action_quit(self) -> None:
         self.log("Quit requested; stopping MeshCore service.")
-        if self.mesh_service:
-            try:
-                await self.mesh_service.stop()
-            except Exception as exc:  # pragma: no cover - hardware specific
-                self.log(f"MeshCore shutdown failed: {exc}")
-            else:
-                self.log("MeshCore service stopped.")
+        shutdown_dialog = ShutdownDialog()
+        self.push_screen(shutdown_dialog)
+        try:
+            if self._backend_task and not self._backend_task.done():
+                self._backend_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._backend_task
+            if self.mesh_service:
+                try:
+                    await self.mesh_service.stop()
+                except Exception as exc:  # pragma: no cover - hardware specific
+                    self.log(f"MeshCore shutdown failed: {exc}")
+                else:
+                    self.log("MeshCore service stopped.")
+        finally:
+            shutdown_dialog.dismiss(None)
         await super().action_quit()
         self.log("Textual app shut down, clearing console.")
         self.console.clear()
@@ -219,8 +221,58 @@ class MeshCoreTuiApp(App):
             message = "Flood advert sent." if flood else "Advert sent."
             self.notify(message, title="MeshCore", severity="information")
 
+    async def _initialize_backend(self) -> None:
+        try:
+            data_store = await asyncio.to_thread(ChatDataStore)
+        except Exception as exc:  # pragma: no cover - disk issues
+            self.log(f"Chat data store failed to initialize: {exc}")
+
+            def _notify_failure() -> None:
+                self.notify(
+                    f"Chat state failed to load: {exc}",
+                    severity="error",
+                    timeout=10,
+                )
+
+            self.call_after_refresh(_notify_failure)
+            return
+        self.data_store = data_store
+        self.mesh_service = MeshCoreService(self.config_service)
+        self.store_bridge = MeshCoreStoreBridge(self.mesh_service, self.data_store)
+
+        self._schedule_chat_mode()
+        if self.mesh_service:
+            asyncio.create_task(self._start_meshcore())
+
+    async def _start_meshcore(self) -> None:
+        service = self.mesh_service
+        if not service:
+            return
+        try:
+            await service.start()
+        except Exception as exc:  # pragma: no cover - requires device
+            self.log(f"MeshCore connection failed: {exc}")
+
+            def _notify() -> None:
+                self.notify(
+                    f"MeshCore connection failed: {exc}",
+                    severity="error",
+                    timeout=10,
+                )
+
+            self.call_after_refresh(_notify)
+
+    def _schedule_chat_mode(self) -> None:
+        async def _switch() -> None:
+            await self.switch_mode("chat")
+            with contextlib.suppress(KeyError):
+                self.remove_mode("loading")
+
+        self.call_after_refresh(lambda: asyncio.create_task(_switch()))
+
 
 if __name__ == "__main__":
+    print("Loading meshcore-tui...\n")
     parser = argparse.ArgumentParser(description="MeshCore TUI")
     parser.add_argument(
         "--fake-data",

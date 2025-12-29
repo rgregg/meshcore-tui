@@ -16,9 +16,9 @@
   - [x] Show sender metadata for channel posts (map contact prefix to display name) instead of attributing everything to the current user
   - [x] Provide an error toast when sending to a channel fails (e.g., channel not provisioned or radio offline)
 - [ ] Add message-level UX
-  - [ ] Reply to a selected message with `ctrl+r`, pre-populating `@[sender]` in the input box
-  - [ ] Expand the `ctrl+i` message inspector to surface timestamp, path, repeater hops, and duplicate counts
-  - [ ] Insert date/time dividers when gaps between messages exceed 15 minutes
+  - [x] Reply to a selected message with `ctrl+r`, pre-populating `@[sender]` in the input box
+  - [x] Expand the `ctrl+i` message inspector to surface timestamp, path, repeater hops, and duplicate counts
+  - [x] Insert date/time dividers when gaps between messages exceed 15 minutes
 - [ ] Channel creation UX
   - [ ] Allow adding hashtag channels with auto-generated secrets
   - [ ] Allow adding private channels with user-provided keys

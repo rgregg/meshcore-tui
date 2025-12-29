@@ -27,3 +27,13 @@
     #MessageList {
 
     }
+
+    .MessageText {
+        text-wrap: wrap;
+        width: 1fr;
+    }
+
+    .MessageDivider {
+        margin-top: 1;
+        text-align: center;
+    }

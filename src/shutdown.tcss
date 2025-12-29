@@ -1,0 +1,24 @@
+ShutdownDialog {
+    align: center middle;
+}
+
+#ShutdownPanel {
+    padding: 2 4;
+    border: round $secondary;
+    background: $surface;
+    width: 60;
+    align: center middle;
+    text-align: center;
+}
+
+#ShutdownPanel > * {
+    margin-top: 1;
+}
+
+#ShutdownMessage {
+    text-style: bold;
+}
+
+#ShutdownHint {
+    color: $text-muted;
+}

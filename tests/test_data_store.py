@@ -8,9 +8,9 @@ from services.meshcore_service import MeshCoreChannelInfo, MeshCoreContactInfo, 
 
 
 def test_chat_data_store_persists_channels_and_messages(tmp_path) -> None:
-    state_path = tmp_path / "state.json"
+    state_path = tmp_path / "state.sqlite3"
     current_user = MeshCoreNode("Operator", public_key="me")
-    store = ChatDataStore(path=state_path, current_user=current_user)
+    store = ChatDataStore(path=state_path, current_user=current_user, skip_legacy_import=True)
     channel = store.ensure_channel("general", 1)
     sender = MeshCoreNode("Alice", public_key="alice")
     store.append_message(
@@ -18,7 +18,7 @@ def test_chat_data_store_persists_channels_and_messages(tmp_path) -> None:
         ChannelMessage(channel, "Hello world", datetime.now(timezone.utc), sender),
     )
 
-    reloaded = ChatDataStore(path=state_path, current_user=current_user)
+    reloaded = ChatDataStore(path=state_path, current_user=current_user, skip_legacy_import=True)
     persisted_channel = reloaded.get_channel_by_name("general")
     assert persisted_channel is not None
     messages = reloaded.get_messages_for_channel(persisted_channel)
@@ -52,7 +52,7 @@ def test_store_bridge_applies_meshcore_updates(tmp_path) -> None:
             self.self_listeners.append(listener)
 
     current_user = MeshCoreNode("Operator", public_key="me")
-    store = ChatDataStore(path=tmp_path / "state.json", current_user=current_user)
+    store = ChatDataStore(path=tmp_path / "state.sqlite3", current_user=current_user, skip_legacy_import=True)
     dummy_service = DummyService()
     MeshCoreStoreBridge(dummy_service, store)
     for listener in dummy_service.self_listeners:

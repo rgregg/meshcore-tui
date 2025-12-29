@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import datetime
 import asyncio
 import uuid
 import logging
@@ -62,7 +62,7 @@ class BaseMessage(ABC):
 
     def __init__(self, text: str, timestamp: datetime, sender: MeshCoreNode):
         self.text = text
-        self.timestamp = timestamp or datetime.now(timezone.utc)
+        self.timestamp = timestamp or datetime.now().astimezone()
         self.sender = sender
         self.channel = None
         self.public_key = uuid.uuid4()
@@ -155,16 +155,24 @@ class FakeDataProvider(BaseDataProvider):
             woman,
             kid,
             botuser])
-        self.__messages[public] = [ ChannelMessage(public, "Test 1", datetime.now(timezone.utc), man),
-                                      ChannelMessage(public, "Test 2", datetime.now(timezone.utc), woman),
-                                      ChannelMessage(public, "Test 3", datetime.now(timezone.utc), kid), ]
-        self.__messages[bot] = [   ChannelMessage(bot, "T", datetime.now(timezone.utc), man),
-                                      ChannelMessage(bot, "ping pong", datetime.now(timezone.utc), botuser),
-                                      ChannelMessage(bot, "path", datetime.now(timezone.utc), kid),
-                                      ChannelMessage(bot, "Foo\nBar\nBaz", datetime.now(timezone.utc), botuser),]
-        self.__messages[kid] = [ UserMessage("Hello, this is a test", datetime.now(), kid, man),
-                                 UserMessage("Coming through loud and clear", datetime.now(), man, kid)]
-        self.__messages[woman] = [ UserMessage("Testing from me to you", datetime.now(), man, woman) ]
+        self.__messages[public] = [
+            ChannelMessage(public, "Test 1", datetime.now().astimezone(), man),
+            ChannelMessage(public, "Test 2", datetime.now().astimezone(), woman),
+            ChannelMessage(public, "Test 3", datetime.now().astimezone(), kid),
+        ]
+        self.__messages[bot] = [
+            ChannelMessage(bot, "T", datetime.now().astimezone(), man),
+            ChannelMessage(bot, "ping pong", datetime.now().astimezone(), botuser),
+            ChannelMessage(bot, "path", datetime.now().astimezone(), kid),
+            ChannelMessage(bot, "Foo\nBar\nBaz", datetime.now().astimezone(), botuser),
+        ]
+        self.__messages[kid] = [
+            UserMessage("Hello, this is a test", datetime.now().astimezone(), kid, man),
+            UserMessage("Coming through loud and clear", datetime.now().astimezone(), man, kid),
+        ]
+        self.__messages[woman] = [
+            UserMessage("Testing from me to you", datetime.now().astimezone(), man, woman)
+        ]
 
     def get_channels(self):
         return self.__channels

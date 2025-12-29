@@ -1,0 +1,24 @@
+LoadingScreen {
+    align: center middle;
+}
+
+#LoadingScreen {
+    width: 60;
+    border: panel $surface;
+    padding: 2 4;
+    height: auto;
+    align: center middle;
+    text-align: center;
+}
+
+#LoadingScreen > * {
+    margin-top: 1;
+}
+
+#LoadingMessage {
+    text-style: bold;
+}
+
+#LoadingSubtext {
+    color: $text-muted;
+}

@@ -282,6 +282,7 @@ class MeshCoreService:
                 raise RuntimeError("MeshCore connection unavailable")
             logger.info("Sending channel message to index %s: %s", channel_index, text)
             await self._meshcore.commands.send_chan_msg(channel_index, text)
+            
 
         await self._run_radio_task(f"channel:{channel_index}", _send)
 

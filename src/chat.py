@@ -1,10 +1,28 @@
 from abc import ABC, abstractmethod
 import asyncio
 from datetime import datetime, timedelta
+import re
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import ScrollableContainer, VerticalScroll, Horizontal, HorizontalScroll, Vertical
-from textual.widgets import Input, Markdown, Static, Collapsible, LoadingIndicator, ListView, ListItem, Label, Header
+from textual.containers import (
+    ScrollableContainer,
+    VerticalScroll,
+    Horizontal,
+    HorizontalScroll,
+    Vertical,
+)
+from textual.widgets import (
+    Input,
+    Markdown,
+    Static,
+    Collapsible,
+    LoadingIndicator,
+    ListView,
+    ListItem,
+    Label,
+    Header,
+)
 from textual.css.query import NoMatches
 from textual.screen import Screen
 from data import (
@@ -20,16 +38,30 @@ from data import (
 from dialog import PromptDialog
 from footer import ConnectionStatusFooter
 
+MENTION_PATTERN = re.compile(r"@\[[^\]]+\]")
+SENDER_STYLE = "bold dodger_blue2"
+MENTION_STYLE = "bold medium_spring_green"
+TIMESTAMP_STYLE = "italic dim"
+
 # class Content(VerticalScroll, can_focus=False):
 #     """Non focusable vertical scroll."""
 
 
 class ChannelListViewItem(ListItem):
+    """List item wrapper for channels that can refresh its label."""
+
     item: BaseContainerItem
+
     def __init__(self, item: BaseContainerItem):
-        self.log(f"ChannelListViewItem received: {item}")
-        super().__init__(Label(item.display_text))
+        super().__init__()
         self.item = item
+        self._label = Label(item.display_text)
+
+    def compose(self) -> ComposeResult:
+        yield self._label
+
+    def refresh_title(self) -> None:
+        self._label.update(self.item.display_text)
 
 class MessageListViewItem(ListItem):
     """Reusable list item that can refresh its content for different messages."""
@@ -39,7 +71,7 @@ class MessageListViewItem(ListItem):
     def __init__(self, message: BaseMessage):
         super().__init__()
         self.message = message
-        self._label = Label("")
+        self._label = Label("", classes="MessageText")
         self.update_message(message)
 
     def compose(self) -> ComposeResult:
@@ -50,16 +82,33 @@ class MessageListViewItem(ListItem):
         self.message = message
         self._label.update(self._format_message_text(message))
 
-    def _format_message_text(self, message: BaseMessage) -> str:
+    def _format_message_text(self, message: BaseMessage) -> Text:
         sender = getattr(message, "sender", None)
-        sender_name = str(sender) if sender else ""
-        if not sender_name or sender_name.lower() == "unknown sender":
-            return message.text
-        return f"{sender_name}: {message.text}"
+        sender_name = str(sender).strip() if sender else ""
+        text = Text()
+        if sender_name and sender_name.lower() != "unknown sender":
+            text.append(sender_name, style=SENDER_STYLE)
+            text.append(": ")
+        text += self._highlight_mentions(message.text or "")
+        return text
+
+    def _highlight_mentions(self, value: str) -> Text:
+        result = Text()
+        idx = 0
+        for match in MENTION_PATTERN.finditer(value):
+            start, end = match.span()
+            if start > idx:
+                result.append(value[idx:start])
+            result.append(match.group(0), style=MENTION_STYLE)
+            idx = end
+        if idx < len(value):
+            result.append(value[idx:])
+        return result
 
 class MessageDividerItem(ListItem):
     def __init__(self, label: str):
-        super().__init__(Label(label, classes="MessageDivider"))
+        text = Text(label, style=TIMESTAMP_STYLE)
+        super().__init__(Label(text, classes="MessageDivider"))
         self.can_focus = False
 
 class BaseChatScreen(Screen):
@@ -72,13 +121,14 @@ class BaseChatScreen(Screen):
 
     CSS_PATH = "chat.tcss"
     MESSAGE_GAP = timedelta(minutes=15)
+    MAX_MESSAGES = 50
     NAV_BINDINGS = [
         Binding("1", "open_channels", "Channels"),
         Binding("2", "open_chats", "Chats"),
         Binding("s", "open_settings", "Settings"),
     ]
     BINDINGS = NAV_BINDINGS + [
-        Binding("ctrl+i", "show_message_info", "Message info"),
+        Binding("i", "show_message_info", "Message info"),
         Binding("ctrl+r", "reply_message", "Reply"),
     ]
 
@@ -87,6 +137,7 @@ class BaseChatScreen(Screen):
         self.selected_container = None
         self._pending_data_updates: list[DataUpdate] = []
         self._message_widget_cache: dict[BaseMessage, MessageListViewItem] = {}
+        self._load_generation = 0
 
     def compose(self) -> ComposeResult:
         self.channel_items = [ChannelListViewItem(c) for c in self.get_data_containers()]
@@ -186,13 +237,25 @@ class BaseChatScreen(Screen):
         """Updates the list view for the messages with the latest content"""
         self.log(f"Reloading messages for {name}")
 
+        self._load_generation += 1
+        load_generation = self._load_generation
         listview = self.message_listview
         listview.clear()
         channel = self.get_data_container_by_name(name)
         if channel is None:
             self.set_loader_visible(False)
             return
-        items = self._build_message_items(self.get_data_container_items(channel))
+        try:
+            messages = await asyncio.to_thread(self._fetch_messages_for_container, channel)
+        except Exception as exc:  # pragma: no cover - defensive
+            self.log(f"Failed to load messages for {name}: {exc}")
+            self.set_loader_visible(False)
+            self._notify_error(f"Failed to load messages for {name}.")
+            return
+        if load_generation != self._load_generation or self.selected_container != channel:
+            self.log(f"Stale load result for {name}; ignoring")
+            return
+        items = self._build_message_items(messages)
         listview.extend(items)
         self._scroll_messages_to_end()
         self.set_loader_visible(False)
@@ -214,6 +277,12 @@ class BaseChatScreen(Screen):
         self._apply_data_update(event)
 
     def _apply_data_update(self, event: DataUpdate) -> None:
+        if event.update_type == "update" and event.item is None:
+            for child in self.container_listview.children:
+                if getattr(child, "item", None) == event.container and hasattr(child, "refresh_title"):
+                    child.refresh_title()
+            return
+
         if event.update_type == "add" and event.item is None:
             # New channel/chat container
             new_channel = ChannelListViewItem(event.container)
@@ -292,6 +361,7 @@ class BaseChatScreen(Screen):
         if prev_ts and ts and ts - prev_ts > self.MESSAGE_GAP:
             listview.append(MessageDividerItem(self._format_divider_label(ts)))
         listview.append(self._get_message_widget(message))
+        self._trim_message_list()
 
     def action_show_message_info(self) -> None:
         message = self._selected_message()
@@ -395,10 +465,35 @@ class BaseChatScreen(Screen):
             widget.update_message(message)
         return widget
 
+    def _fetch_messages_for_container(self, container: BaseContainerItem) -> list[BaseMessage]:
+        """Blocking message fetch limited to MAX_MESSAGES; run via asyncio.to_thread."""
+        messages = self.get_data_container_items(container)
+        return self._limit_messages(messages)
+
+    def _limit_messages(self, messages: list[BaseMessage]) -> list[BaseMessage]:
+        if self.MAX_MESSAGES <= 0 or len(messages) <= self.MAX_MESSAGES:
+            return messages
+        return messages[-self.MAX_MESSAGES :]
+
+    def _trim_message_list(self) -> None:
+        if self.MAX_MESSAGES <= 0:
+            return
+        listview = self.message_listview
+        message_children = [child for child in listview.children if hasattr(child, "message")]
+        while len(message_children) > self.MAX_MESSAGES:
+            oldest = message_children.pop(0)
+            oldest.remove()
+            self._remove_leading_dividers()
+
+    def _remove_leading_dividers(self) -> None:
+        listview = self.message_listview
+        while listview.children and not hasattr(listview.children[0], "message"):
+            listview.children[0].remove()
+
 
 class ChannelChatScreen(BaseChatScreen):
     left_pane_title = "Channels"
-    BINDINGS = BaseChatScreen.NAV_BINDINGS + [
+    BINDINGS = BaseChatScreen.BINDINGS + [
         Binding("a", "add_channel", "Add channel"),
         Binding("d", "delete_channel", "Remove channel")
     ]
@@ -452,7 +547,7 @@ class ChannelChatScreen(BaseChatScreen):
 
 class UserChatScreen(BaseChatScreen):
     left_pane_title = "Chats"
-    BINDINGS = BaseChatScreen.NAV_BINDINGS + [
+    BINDINGS = BaseChatScreen.BINDINGS + [
         Binding("a", "add_chat", "New chat"),
         Binding("d", "delete_chat", "Delete chat")
     ]

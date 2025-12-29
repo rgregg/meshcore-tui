@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 
 from textual.app import ComposeResult
-from textual.widgets import Footer, Static
+from textual.widgets import Footer, Static, Label
 from textual.css.query import NoMatches
 from textual.timer import Timer
 
@@ -14,16 +14,15 @@ logger = logging.getLogger(__name__)
 class ConnectionStatusFooter(Footer):
     """Footer that shows MeshCore connection status before key bindings."""
 
-    def __init__(self, *, status_id: str = "ConnectionStatusLabel", **kwargs) -> None:
+    def __init__(self, *, status_id: str | None = None, **kwargs) -> None:
         super().__init__(**kwargs)
-        self._status_id = status_id
+        self._status_id = status_id or f"statusBarLabel_{id(self)}"
         self._last_status_text: str | None = None
         self._status_timer: Timer | None = None
         self._missing_logged = False
 
     def compose(self) -> ComposeResult:  # type: ignore[override]
-        yield Static("MeshCore: starting...", id=self._status_id)
-        yield Static("Ctrl+1 Channels • Ctrl+2 Chats", classes="ShortcutHint")
+        yield Label("", classes="PaneTitle", id=self._status_id)
         yield from super().compose()
 
     def on_mount(self) -> None:
@@ -43,7 +42,7 @@ class ConnectionStatusFooter(Footer):
 
     def _update_status(self) -> None:
         try:
-            widget = self.query_one(f"#{self._status_id}", Static)
+            widget = self.query_one(f"#{self._status_id}", Label)
         except NoMatches:
             if not self._missing_logged:
                 logger.debug("Status label missing; skipping update.")

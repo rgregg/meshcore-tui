@@ -15,6 +15,7 @@ Tests still belong in `tests/` (add a folder if missing) and shared fixtures sit
 
 ## Build, Test, and Development Commands
 - `python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`: bootstrap dependencies the first time you clone or whenever requirements change.
+- Always activate the repo venv before running any Python tooling or tests: `source .venv/bin/activate` (CI, `textual run`, `pytest`, etc. all assume this environment).
 - `cargo run -- --config config/dev.toml`: launches the TUI against the dev meshcore endpoint with hot reload logging enabled.
 - `cargo build --release`: produces an optimized binary for packaging on embedded targets.
 - `cargo fmt --all` and `cargo clippy --all-targets --all-features`: enforce formatting and lints before every push.
