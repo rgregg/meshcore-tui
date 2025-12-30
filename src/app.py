@@ -16,22 +16,21 @@ from settings import SettingsScreen
 from chat import ChannelChatScreen, UserChatScreen
 from dialog import ShutdownDialog
 from loading import LoadingScreen
-from services.config_service import ConfigService
+from services.config_service import ConfigService, DEFAULT_DATA_DIR
 from services.meshcore_service import MeshCoreService
 from services.data_store import ChatDataStore, MeshCoreStoreBridge
 
-LOG_DIR = Path("logs")
-LOG_FILE = LOG_DIR / "meshcore-tui.log"
-
-
-def configure_logging(level: str | None = None) -> None:
-    """Write textual/meshcore logs to logs/meshcore-tui.log."""
+def configure_logging(level: str | None = None, data_dir: Path | None = None) -> None:
+    """Write textual/meshcore logs to the configured data directory."""
     if getattr(configure_logging, "_configured", False):  # type: ignore[attr-defined]
         return
     log_level = getattr(logging, (level or "INFO").upper(), logging.INFO)
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    target_dir = Path(data_dir or DEFAULT_DATA_DIR).expanduser()
+    log_dir = target_dir / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "meshcore-tui.log"
     file_handler = RotatingFileHandler(
-        LOG_FILE,
+        log_file,
         maxBytes=5 * 1024 * 1024,
         backupCount=10,
         encoding="utf-8",
@@ -60,7 +59,9 @@ class MeshCoreTuiApp(App):
     def __init__(self, *, use_fake_data: bool = False) -> None:
         super().__init__()
         self.config_service = ConfigService()
-        configure_logging(self.config_service.config.ui.log_level)
+        app_settings = self.config_service.config.app
+        self._data_dir = self._resolve_data_dir(app_settings.data_location)
+        configure_logging(app_settings.log_level, self._data_dir)
         self.use_fake_data = use_fake_data
         self.mesh_service: MeshCoreService | None = None
         self.data_store: ChatDataStore | None = None
@@ -231,7 +232,12 @@ class MeshCoreTuiApp(App):
 
     async def _initialize_backend(self) -> None:
         try:
-            data_store = await asyncio.to_thread(ChatDataStore)
+            state_path = self._data_dir / "meshcore_state.sqlite3"
+
+            def _open_store() -> ChatDataStore:
+                return ChatDataStore(path=state_path)
+
+            data_store = await asyncio.to_thread(_open_store)
         except Exception as exc:  # pragma: no cover - disk issues
             self.log(f"Chat data store failed to initialize: {exc}")
 
@@ -270,6 +276,11 @@ class MeshCoreTuiApp(App):
                 self.notify(message, severity="error", timeout=10)
 
             self.call_after_refresh(_notify)
+
+    def _resolve_data_dir(self, location: str) -> Path:
+        path = Path(location).expanduser()
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
     def _schedule_chat_mode(self) -> None:
         async def _switch() -> None:

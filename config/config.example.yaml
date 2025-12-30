@@ -6,6 +6,7 @@ meshcore:
     endpoint: meshcore-dev.local      # for TCP connections
     device: auto                      # auto for serial or /dev/tty0, MAC address for bluetooth
   log_packets: false
-ui:
-  theme: "meshcore-dark"
-  log_level: "info"
+app:
+  theme: meshcore-dark
+  log_level: info 
+  data_location: ~/.meshcore-tui      # where configuration and state are stored

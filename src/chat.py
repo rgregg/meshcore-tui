@@ -243,8 +243,10 @@ class BaseChatScreen(Screen):
 
         self._load_generation += 1
         load_generation = self._load_generation
+        self.log(f"Starting reload generation={load_generation} for {name}")
         listview = self.message_listview
         listview.clear()
+        self.log("Message list cleared for reload")
         channel = self.get_data_container_by_name(name)
         if channel is None:
             self.set_loader_visible(False)
@@ -261,6 +263,7 @@ class BaseChatScreen(Screen):
             return
         items = self._build_message_items(messages)
         listview.extend(items)
+        self.log(f"Reload generation={load_generation} populated {len(items)} rows")
         self._scroll_messages_to_end()
         self.set_loader_visible(False)
 
@@ -277,7 +280,6 @@ class BaseChatScreen(Screen):
             self.log("UI not ready; queueing data update")
             self._pending_data_updates.append(event)
             return
-
         self.log(
             f"UI data update: type={event.update_type} container={getattr(event.container, 'name', getattr(event.container, 'display_name', 'unknown'))}"
         )
@@ -292,6 +294,7 @@ class BaseChatScreen(Screen):
             # New channel/chat container
             new_channel = ChannelListViewItem(event.container)
             self.container_listview.append(new_channel)
+            self.log(f"Container added: {event.container}")
             new_channel.refresh_title()
             if self.selected_container is None:
                 self._focus_container(event.container)
@@ -356,6 +359,7 @@ class BaseChatScreen(Screen):
             return
         pending = list(self._pending_data_updates)
         self._pending_data_updates.clear()
+        self.log(f"Flushing {len(pending)} pending updates")
         for update in pending:
             self._apply_data_update(update)
 
@@ -365,6 +369,7 @@ class BaseChatScreen(Screen):
             self.query_one("#MessageList")
             return True
         except NoMatches:
+            self.log("UI not ready; widgets missing")
             return False
 
     def _notify_error(self, message: str) -> None:

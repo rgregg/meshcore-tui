@@ -22,6 +22,7 @@ from services.meshcore_service import (
     MeshCoreSelfInfo,
     MeshCoreService,
 )
+from services.config_service import DEFAULT_DATA_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -35,18 +36,15 @@ class ChatDataStore:
         self,
         path: Path | str | None = None,
         current_user: MeshCoreNode | None = None,
-        *,
-        skip_legacy_import: bool = False,
     ) -> None:
-        default_path = Path("logs") / "meshcore_state.sqlite3"
-        self._path = Path(path or default_path)
-        self._path.parent.mkdir(parents=True, exist_ok=True)
+        default_root = Path(DEFAULT_DATA_DIR).expanduser()
+        db_path = Path(path).expanduser() if path else default_root / "meshcore_state.sqlite3"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._path = db_path
         self._conn = sqlite3.connect(self._path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._ensure_schema()
-        self._legacy_json_path = Path("logs") / "meshcore_state.json"
         self.current_user = current_user or MeshCoreNode("MeshCore Operator")
-        self._skip_legacy_import = skip_legacy_import
         self._channels: list[MeshCoreChannel] = []
         self._contacts: list[MeshCoreNode] = []
         self._messages: dict[str, list[BaseMessage]] = {}
@@ -108,16 +106,23 @@ class ChatDataStore:
         normalized_index = self._normalize_channel_index(name, index)
         existing = self._find_channel_by_index(normalized_index) if normalized_index is not None else None
         if existing:
-            if existing.name != name:
+            if existing.name != name:       # TODO: We should treat this as a new channel and remove the old one, not rename it.
+                logger.debug("Ensure channel: Channel name is different, updating channel name: %s (idx: %s)", name, index)
                 existing.name = name
                 self._save_channel(existing)
                 self._notify_container_update(existing)
             return existing
+        else:
+            logger.debug("Ensure channel: No existing channel was found: %s (idx: %s)", name, index)
+
+        # If we didn't find the channel by index, fallback and find it by name
         for channel in self._channels:
             if channel.name == name and channel.index is None:
                 channel.index = normalized_index
                 self._save_channel(channel)
                 return channel
+        
+        # Otherwise, create a new channel and save it
         channel = MeshCoreChannel(name, index=normalized_index)
         self._register_container(channel, notify=not self._loading)
         return channel
@@ -253,13 +258,7 @@ class ChatDataStore:
         self._loading = True
         try:
             self._load_from_database()
-            if (
-                not self._channels
-                and not self._contacts
-                and not any(self._messages.values())
-                and not self._skip_legacy_import
-            ):
-                self._import_legacy_json()
+            pass
         finally:
             self._loading = False
 
@@ -398,72 +397,6 @@ class ChatDataStore:
             message_hash = row["message_hash"]
             self._message_hashes[container_key][message_hash] = repeat_count
             self._message_refs[container_key][message_hash] = message
-
-    def _import_legacy_json(self) -> None:
-        if not self._legacy_json_path.exists():
-            return
-        try:
-            with self._legacy_json_path.open("r", encoding="utf-8") as handle:
-                data = json.load(handle)
-        except Exception as exc:  # pragma: no cover - invalid data
-            logger.warning("Failed to import legacy chat state: %s", exc)
-            return
-        logger.info("Importing chat history from legacy JSON file")
-        self._load_legacy_payload(data)
-        self._persist_full_state_to_db()
-
-    def _load_legacy_payload(self, data: dict) -> None:
-        current_user = data.get("current_user")
-        if current_user:
-            self.current_user = self._deserialize_node(current_user)
-        for channel_entry in data.get("channels", []):
-            name = channel_entry.get("name", "Channel")
-            idx = self._normalize_channel_index(name, channel_entry.get("index"))
-            channel = MeshCoreChannel(name, index=idx)
-            self._register_container(channel, notify=False)
-        for contact_entry in data.get("contacts", []):
-            node = MeshCoreNode(
-                contact_entry.get("display_name", "Contact"),
-                public_key=contact_entry.get("public_key"),
-            )
-            self._register_container(node, notify=False)
-        for message_entry in data.get("messages", []):
-            container_key = message_entry.get("container_key")
-            container = self._container_cache.get(container_key)
-            if not container:
-                container = self._hydrate_missing_container(message_entry, container_key)
-                if container:
-                    self._register_container(container, notify=False)
-            if not container:
-                continue
-            timestamp = self._parse_timestamp(message_entry.get("timestamp"))
-            sender = self._deserialize_node(message_entry.get("sender", {}))
-            if message_entry.get("type") == "channel" and isinstance(container, MeshCoreChannel):
-                message = ChannelMessage(container, message_entry.get("text", ""), timestamp, sender)
-            elif isinstance(container, MeshCoreNode):
-                receiver_data = message_entry.get("receiver")
-                receiver = (
-                    self._deserialize_node(receiver_data)
-                    if receiver_data
-                    else self.current_user
-                )
-                message = UserMessage(message_entry.get("text", ""), timestamp, sender, receiver)
-            else:
-                continue
-            self._messages.setdefault(container_key, [])
-            counts = self._message_hashes.setdefault(container_key, {})
-            refs = self._message_refs.setdefault(container_key, {})
-            hash_value = self._compute_message_hash(message)
-            if hash_value in counts:
-                counts[hash_value] += 1
-                ref = refs.get(hash_value)
-                if ref:
-                    setattr(ref, "repeat_count", counts[hash_value])
-                continue
-            counts[hash_value] = 1
-            refs[hash_value] = message
-            setattr(message, "repeat_count", 1)
-            self._messages[container_key].append(message)
 
     def _persist_full_state_to_db(self) -> None:
         self._save_current_user()
@@ -667,6 +600,7 @@ class MeshCoreStoreBridge:
         if isinstance(info, MeshCoreChannelInfo):
             channel = self._store.upsert_channel(info)
         else:
+            logger.warning("Channel message didn't get a MeshCoreChannelInfo object: %s", info)
             idx = payload.get("channel_idx")
             name = payload.get("channel_name", f"Channel {idx}")
             channel = self._store.ensure_channel(name, idx)

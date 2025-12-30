@@ -25,8 +25,8 @@ class SafeInput(Input):
             return
 
 class SettingsNavItem(ListItem):
-    def __init__(self, tab_id: str, label: str) -> None:
-        super().__init__(Label(label, classes="SettingsNavLabel"))
+    def __init__(self, tab_id: str, label: str, **kwargs) -> None:
+        super().__init__(Label(label, classes="SettingsNavLabel"), **kwargs)
         self.tab_id = tab_id
 
 
@@ -84,7 +84,7 @@ class SettingsScreen(Screen):
             with Vertical(id="SettingsNav"):
                 yield Label("Settings", classes="SettingsNavTitle")
                 nav_items = [
-                    SettingsNavItem(tab_id, tab["label"])
+                    SettingsNavItem(tab_id, tab["label"], classes="SettingsNavItem")
                     for tab_id, tab in self._tabs.items()
                 ]
                 yield ListView(*nav_items, id="SettingsNavList")
@@ -106,6 +106,8 @@ class SettingsScreen(Screen):
                         yield SafeInput(id="ThemeInput", classes="spaced-input")
                         yield Static("Log level", classes="field-label")
                         yield SafeInput(id="LogLevelInput", classes="spaced-input")
+                        yield Static("Data directory", classes="field-label")
+                        yield SafeInput(id="DataLocationInput", classes="spaced-input")
                     with Vertical(id="DeviceTab", classes="SettingsTab"):
                         yield Markdown("## Device")
                         yield Checkbox("Log raw mesh packets to file", id="LogPacketsCheckbox")
@@ -182,8 +184,12 @@ class SettingsScreen(Screen):
             self._config.meshcore.companion.channel_refresh_seconds = int(refresh_value)
         except ValueError:
             pass
-        self._config.ui.theme = self._clean_value("#ThemeInput")
-        self._config.ui.log_level = self._clean_value("#LogLevelInput", fallback="info")
+        self._config.app.theme = self._clean_value("#ThemeInput")
+        self._config.app.log_level = self._clean_value("#LogLevelInput", fallback="info")
+        self._config.app.data_location = self._clean_value(
+            "#DataLocationInput",
+            fallback=self._config.app.data_location,
+        )
         log_packets_checkbox = self.query_one("#LogPacketsCheckbox", Checkbox)
         self._config.meshcore.log_packets = bool(log_packets_checkbox.value)
 
@@ -192,8 +198,9 @@ class SettingsScreen(Screen):
         self.query_one("#EndpointInput", Input).value = self._config.meshcore.companion.endpoint
         self.query_one("#DeviceInput", Input).value = self._config.meshcore.companion.device
         self.query_one("#RefreshSecondsInput", Input).value = str(self._config.meshcore.companion.channel_refresh_seconds)
-        self.query_one("#ThemeInput", Input).value = self._config.ui.theme
-        self.query_one("#LogLevelInput", Input).value = self._config.ui.log_level
+        self.query_one("#ThemeInput", Input).value = self._config.app.theme
+        self.query_one("#LogLevelInput", Input).value = self._config.app.log_level
+        self.query_one("#DataLocationInput", Input).value = self._config.app.data_location
         self.query_one("#LogPacketsCheckbox", Checkbox).value = self._config.meshcore.log_packets
 
     def _clean_value(self, selector: str, fallback: str | None = None) -> str:

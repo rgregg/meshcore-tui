@@ -10,6 +10,7 @@ import yaml
 
 CONFIG_PATH = Path("config/config.yaml")
 CONFIG_EXAMPLE_PATH = Path("config/config.example.yaml")
+DEFAULT_DATA_DIR = Path.home() / ".meshcore-tui"
 
 
 def _load_defaults(cls, data: dict[str, Any] | None) -> Any:
@@ -51,12 +52,13 @@ class MeshcoreConfig:
 
 
 @dataclass
-class UIConfig:
+class AppSettings:
     theme: str = "meshcore-dark"
     log_level: str = "info"
+    data_location: str = str(DEFAULT_DATA_DIR)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any] | None) -> "UIConfig":
+    def from_dict(cls, data: dict[str, Any] | None) -> "AppSettings":
         return _load_defaults(cls, data)
 
 
@@ -64,16 +66,20 @@ class UIConfig:
 class AppConfig:
     version: int = 1
     meshcore: MeshcoreConfig = field(default_factory=MeshcoreConfig)
-    ui: UIConfig = field(default_factory=UIConfig)
+    app: AppSettings = field(default_factory=AppSettings)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "AppConfig":
         if data is None:
             return cls()
+        app_data = data.get("app")
+        legacy_ui = data.get("ui")
+        if not app_data and legacy_ui:
+            app_data = legacy_ui
         return cls(
             version=data.get("version", 1),
             meshcore=MeshcoreConfig.from_dict(data.get("meshcore")),
-            ui=UIConfig.from_dict(data.get("ui")),
+            app=AppSettings.from_dict(app_data),
         )
 
     def to_dict(self) -> dict[str, Any]:

@@ -37,4 +37,4 @@ The chat panes now use `MeshCoreService` (`src/services/meshcore_service.py`) to
 
 ## Logging
 
-Runtime logs from Textual and the MeshCore SDK mirror to `logs/meshcore-tui.log`. Use this file to capture stack traces or connection errors that might be hidden behind the UI when running with `textual run --dev`. The `logs/` directory is git-ignored; feel free to tail the file or share sanitized snippets in bug reports.
+Runtime logs from Textual and the MeshCore SDK mirror to `~/.meshcore-tui/logs/meshcore-tui.log` (or the custom data directory you configure). Use this file to capture stack traces or connection errors that might be hidden behind the UI when running with `textual run --dev`. The data directory is outside the repo, so feel free to tail the file or share sanitized snippets in bug reports.

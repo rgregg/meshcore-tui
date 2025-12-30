@@ -11,7 +11,14 @@ SettingsScreen {
     width: 28%;
     border-right: panel $secondary;
     padding: 1 1 1 1;
-    row-gap: 1;
+}
+
+.SettingsNavItem {
+    margin-top: 1;
+}
+
+.SettingsNavItem:first-child {
+    margin-top: 0;
 }
 
 #SettingsNavList {
@@ -21,10 +28,6 @@ SettingsScreen {
 #SettingsForm {
     width: 72%;
     padding: 1 2;
-}
-
-.SettingsTab {
-    row-gap: 1;
 }
 
 .SettingsNavTitle {

@@ -28,9 +28,10 @@ class ConfigServiceTests(unittest.TestCase):
                     endpoint: example.local
                     device: auto
                     channel_refresh_seconds: 45
-                ui:
+                app:
                   theme: meshcore-dark
                   log_level: info
+                  data_location: ~/.meshcore-tui
                 """
             ).strip()
         )
@@ -57,9 +58,9 @@ class ConfigServiceTests(unittest.TestCase):
 
     def test_mutate_helper_updates_and_saves(self) -> None:
         service = self._service()
-        service.mutate(lambda cfg: setattr(cfg.ui, "theme", "meshcore-light"))
+        service.mutate(lambda cfg: setattr(cfg.app, "theme", "meshcore-light"))
         reloaded = self._service()
-        self.assertEqual(reloaded.config.ui.theme, "meshcore-light")
+        self.assertEqual(reloaded.config.app.theme, "meshcore-light")
 
 
 if __name__ == "__main__":
